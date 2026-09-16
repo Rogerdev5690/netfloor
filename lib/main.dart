@@ -62,9 +62,17 @@ const List<RouterModelSpec> kRouterCatalog = [
 RouterModelSpec _specFor(RouterModelType type) => kRouterCatalog.firstWhere((s) => s.type == type);
 
 // ---------------------------------------------------------------------------
-// Biblioteca de plantas baixas. A "Apartamento Compacto" usa a foto real
-// enviada pelo usuário; as demais são desenhadas proceduralmente (sem foto
-// de referência disponível).
+// Biblioteca de plantas baixas.
+//
+// Cada planta carrega, além da aparência visual, uma lista de `wallSegments`
+// (paredes vetorizadas em coordenadas fracionárias) usada pelo motor de
+// ray-casting do mapa de calor para atenuar o sinal ao atravessar paredes.
+//
+// A "Apartamento Compacto" usa a foto real enviada pelo usuário, carregada
+// via rede (Image.network) com fallback para o asset local embutido caso a
+// rede falhe. As demais não têm foto de referência disponível, então são
+// desenhadas proceduralmente com piso texturizado, paredes espessas e
+// silhuetas de móveis para um acabamento mais "ilustrado".
 // ---------------------------------------------------------------------------
 
 enum FloorPlanRenderMode { image, drawn }
@@ -75,26 +83,39 @@ class RoomDef {
   const RoomDef(this.label, this.rectFrac);
 }
 
+class WallSegment {
+  final Offset a; // coordenadas fracionárias (0..1)
+  final Offset b;
+  final double attenuationDb; // perda de sinal ao atravessar esta parede
+  const WallSegment(this.a, this.b, {this.attenuationDb = 6.0});
+}
+
 class FloorPlanDef {
   final String id;
   final String name;
   final String subtitle;
   final FloorPlanRenderMode mode;
-  final String? assetPath;
+  final String? imageUrl; // imagem remota (Image.network), se disponível
+  final String? assetPath; // asset local: fallback da imagem remota, ou única fonte
   final double aspectRatio;
   final List<RoomDef> rooms;
+  final List<WallSegment> wallSegments;
   const FloorPlanDef({
     required this.id,
     required this.name,
     required this.subtitle,
     required this.mode,
+    this.imageUrl,
     this.assetPath,
     required this.aspectRatio,
     this.rooms = const [],
+    this.wallSegments = const [],
   });
 }
 
 const String kApartmentAsset = 'assets/planta_casa.webp';
+const String kApartmentNetworkUrl =
+    'https://raw.githubusercontent.com/Rogerdev5690/netfloor/main/assets/planta_casa.webp';
 
 const List<FloorPlanDef> kFloorPlanLibrary = [
   FloorPlanDef(
@@ -109,6 +130,12 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
       RoomDef('Banheiro', Rect.fromLTWH(0.66, 0.00, 0.34, 0.50)),
       RoomDef('Sala', Rect.fromLTWH(0.00, 0.50, 0.60, 0.50)),
       RoomDef('Cozinha', Rect.fromLTWH(0.60, 0.50, 0.40, 0.50)),
+    ],
+    wallSegments: [
+      WallSegment(Offset(0.33, 0.00), Offset(0.33, 0.50)),
+      WallSegment(Offset(0.66, 0.00), Offset(0.66, 0.50)),
+      WallSegment(Offset(0.00, 0.50), Offset(1.00, 0.50)),
+      WallSegment(Offset(0.60, 0.50), Offset(0.60, 1.00)),
     ],
   ),
   FloorPlanDef(
@@ -125,14 +152,31 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
       RoomDef('Sala Integrada', Rect.fromLTWH(0.00, 0.35, 0.65, 0.65)),
       RoomDef('Varanda', Rect.fromLTWH(0.65, 0.35, 0.35, 0.65)),
     ],
+    wallSegments: [
+      WallSegment(Offset(0.25, 0.00), Offset(0.25, 0.35)),
+      WallSegment(Offset(0.50, 0.00), Offset(0.50, 0.35)),
+      WallSegment(Offset(0.75, 0.00), Offset(0.75, 0.35)),
+      WallSegment(Offset(0.00, 0.35), Offset(1.00, 0.35)),
+      WallSegment(Offset(0.65, 0.35), Offset(0.65, 1.00), attenuationDb: 3.5),
+    ],
   ),
   FloorPlanDef(
     id: 'apartamento_compacto',
     name: 'Apartamento Compacto',
     subtitle: '2 Quartos · Cozinha Americana · Varanda',
     mode: FloorPlanRenderMode.image,
+    imageUrl: kApartmentNetworkUrl,
     assetPath: kApartmentAsset,
     aspectRatio: 1200 / 800,
+    // Aproximação das paredes internas visíveis na foto (não medidas a laser).
+    wallSegments: [
+      WallSegment(Offset(0.44, 0.00), Offset(0.44, 0.37)),
+      WallSegment(Offset(0.64, 0.00), Offset(0.64, 0.37)),
+      WallSegment(Offset(0.44, 0.37), Offset(1.00, 0.37)),
+      WallSegment(Offset(0.44, 0.37), Offset(0.44, 1.00)),
+      WallSegment(Offset(0.64, 0.37), Offset(0.64, 0.63)),
+      WallSegment(Offset(0.64, 0.63), Offset(1.00, 0.63)),
+    ],
   ),
   FloorPlanDef(
     id: 'escritorio',
@@ -145,6 +189,11 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
       RoomDef('Sala de Reunião', Rect.fromLTWH(0.60, 0.00, 0.40, 0.40)),
       RoomDef('Diretoria', Rect.fromLTWH(0.60, 0.40, 0.40, 0.30)),
       RoomDef('Copa', Rect.fromLTWH(0.60, 0.70, 0.40, 0.30)),
+    ],
+    wallSegments: [
+      WallSegment(Offset(0.60, 0.00), Offset(0.60, 1.00), attenuationDb: 10.0),
+      WallSegment(Offset(0.60, 0.40), Offset(1.00, 0.40)),
+      WallSegment(Offset(0.60, 0.70), Offset(1.00, 0.70)),
     ],
   ),
 ];
@@ -202,33 +251,53 @@ class NetworkModel extends ChangeNotifier {
 
 // ---------------------------------------------------------------------------
 // Modelo de propagação de sinal
-// Sinal(x,y) = max_i ( Ptx_i - 22 * log10(d_i) ), Ptx_i conforme o modelo
-// de hardware de cada roteador.
+// Sinal(x,y) = max_i ( Ptx_i - 22*log10(d_i) - atenuação de paredes_i ),
+// Ptx_i conforme o modelo de hardware de cada roteador.
 // ---------------------------------------------------------------------------
 
 const double kPixelsPerMeter = 45.0; // escala visual da planta
 
-double _singleRouterSignal(Offset point, RouterNode router) {
+/// Componente de espaço livre do sinal (sem paredes), em dBm.
+double _freeSpaceSignal(Offset point, RouterNode router) {
   final distancePx = (point - router.position).distance;
   final distanceM = max(distancePx / kPixelsPerMeter, 1.0);
   final ptx = _specFor(router.model).txPowerDbm;
   return ptx - 22 * (log(distanceM) / ln10);
 }
 
-/// Sinal combinado da rede Mesh em um ponto: o MÁXIMO entre todos os
-/// roteadores ativos (união da cobertura).
-double _meshSignalAt(Offset point, List<RouterNode> routers) {
-  double best = -1000.0;
-  for (final r in routers) {
-    final v = _singleRouterSignal(point, r);
-    if (v > best) best = v;
+/// Teste de interseção entre dois segmentos de reta (caso geral).
+bool _segmentsIntersect(Offset p1, Offset p2, Offset p3, Offset p4) {
+  double orient(Offset a, Offset b, Offset c) => (b.dx - a.dx) * (c.dy - a.dy) - (b.dy - a.dy) * (c.dx - a.dx);
+  final o1 = orient(p1, p2, p3);
+  final o2 = orient(p1, p2, p4);
+  final o3 = orient(p3, p4, p1);
+  final o4 = orient(p3, p4, p2);
+  return ((o1 > 0) != (o2 > 0)) && ((o3 > 0) != (o4 > 0));
+}
+
+/// Uma parede já convertida para coordenadas de pixel do canvas atual.
+class _PixelWall {
+  final Offset a;
+  final Offset b;
+  final double attenuationDb;
+  const _PixelWall(this.a, this.b, this.attenuationDb);
+}
+
+/// Soma a atenuação (em dB) de todas as paredes cruzadas pelo raio entre
+/// dois pontos — o "ray-casting" da física de sinal.
+double _wallAttenuationBetween(Offset from, Offset to, List<_PixelWall> wallsPx) {
+  double total = 0;
+  for (final w in wallsPx) {
+    if (_segmentsIntersect(from, to, w.a, w.b)) {
+      total += w.attenuationDb;
+    }
   }
-  return best;
+  return total;
 }
 
 // ---------------------------------------------------------------------------
 // Paleta de calor estilo "jet", com desvanecimento (alpha) nas áreas de
-// sinal fraco para deixar a planta visível por baixo.
+// sinal fraco para deixar a planta visível por baixo (overlay ~40-50%).
 // ---------------------------------------------------------------------------
 
 const double _kDbmFloor = -30.0; // t = 0.0 (sem cobertura)
@@ -261,32 +330,120 @@ Color _jetColor(double t) {
   return _kStopColors.last;
 }
 
-/// Suaviza a transição para transparente nas áreas de sinal muito fraco,
-/// formando o "halo" gradual visto em mapas de calor reais.
+/// Suaviza a transição para transparente nas áreas de sinal muito fraco.
+/// maxAlpha ~0.48 mantém a planta ilustrada visível por baixo do overlay,
+/// como pedido (opacidade de 40% a 50%).
 double _alphaForT(double t) {
-  const lo = 0.04, hi = 0.55, maxAlpha = 0.82;
+  const lo = 0.04, hi = 0.55, maxAlpha = 0.48;
   final x = ((t - lo) / (hi - lo)).clamp(0.0, 1.0);
   final smooth = x * x * (3 - 2 * x);
   return smooth * maxAlpha;
 }
 
 // ---------------------------------------------------------------------------
-// Pintura: planta baixa desenhada (usada quando não há foto real disponível)
+// Pintura: planta baixa ilustrada (piso texturizado + paredes espessas +
+// silhuetas de móveis), usada quando não há foto real disponível.
 // ---------------------------------------------------------------------------
 
 class FloorPlanPainter extends CustomPainter {
   final List<RoomDef> rooms;
   const FloorPlanPainter(this.rooms);
 
+  bool _isWetArea(String label) {
+    final l = label.toLowerCase();
+    return l.contains('banheiro') || l.contains('cozinha') || l.contains('copa');
+  }
+
+  void _drawFloor(Canvas canvas, Rect r, String label) {
+    if (_isWetArea(label)) {
+      canvas.drawRect(r, Paint()..color = const Color(0xFFF3F4F6));
+      final grout = Paint()
+        ..color = const Color(0xFFDDE3EA)
+        ..strokeWidth = 1;
+      const tile = 16.0;
+      for (double x = r.left; x < r.right; x += tile) {
+        canvas.drawLine(Offset(x, r.top), Offset(x, r.bottom), grout);
+      }
+      for (double y = r.top; y < r.bottom; y += tile) {
+        canvas.drawLine(Offset(r.left, y), Offset(r.right, y), grout);
+      }
+    } else {
+      canvas.drawRect(r, Paint()..color = const Color(0xFFE7D2B0));
+      final plank = Paint()
+        ..color = const Color(0xFFD4B489)
+        ..strokeWidth = 1;
+      const step = 18.0;
+      for (double y = r.top; y < r.bottom; y += step) {
+        canvas.drawLine(Offset(r.left, y), Offset(r.right, y), plank);
+      }
+    }
+  }
+
+  void _drawFurniture(Canvas canvas, Rect r, String label) {
+    final wood = Paint()..color = const Color(0xFFB08968);
+    final woodLight = Paint()..color = const Color(0xFFC9A67D);
+    final fabric = Paint()..color = const Color(0xFFAEB8C4);
+    final white = Paint()..color = Colors.white;
+    final metal = Paint()..color = const Color(0xFF94A3B8);
+    final short = min(r.width, r.height);
+    final l = label.toLowerCase();
+
+    if (l.contains('quarto') || l.contains('suíte') || l.contains('suite')) {
+      final bed = Rect.fromLTWH(r.left + r.width * 0.10, r.top + r.height * 0.10, r.width * 0.52, r.height * 0.60);
+      canvas.drawRRect(RRect.fromRectAndRadius(bed, const Radius.circular(6)), woodLight);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(Rect.fromLTWH(bed.left, bed.top, bed.width, bed.height * 0.24), const Radius.circular(6)),
+        white,
+      );
+    } else if (l.contains('sala') && !l.contains('reunião') && !l.contains('reuniao')) {
+      final sofa = Rect.fromLTWH(r.left + r.width * 0.06, r.top + r.height * 0.55, r.width * 0.40, r.height * 0.30);
+      canvas.drawRRect(RRect.fromRectAndRadius(sofa, const Radius.circular(8)), fabric);
+      canvas.drawCircle(Offset(r.left + r.width * 0.60, r.top + r.height * 0.70), short * 0.07, woodLight);
+    } else if (l.contains('cozinha') || l.contains('copa')) {
+      canvas.drawRect(Rect.fromLTWH(r.left, r.top, r.width * 0.20, r.height), metal);
+      canvas.drawRect(Rect.fromLTWH(r.left + r.width * 0.04, r.top + r.height * 0.10, r.width * 0.12, r.height * 0.14), white);
+    } else if (l.contains('banheiro')) {
+      canvas.drawOval(Rect.fromLTWH(r.right - r.width * 0.32, r.bottom - r.height * 0.30, r.width * 0.24, r.height * 0.20), white);
+      canvas.drawRect(Rect.fromLTWH(r.left + r.width * 0.08, r.top + r.height * 0.08, r.width * 0.22, r.height * 0.12), white);
+    } else if (l.contains('reunião') ||
+        l.contains('reuniao') ||
+        l.contains('diretoria') ||
+        l.contains('open space') ||
+        l.contains('escritório') ||
+        l.contains('escritorio')) {
+      final table = Rect.fromLTWH(r.left + r.width * 0.18, r.top + r.height * 0.35, r.width * 0.64, r.height * 0.28);
+      canvas.drawRRect(RRect.fromRectAndRadius(table, const Radius.circular(4)), wood);
+    } else if (l.contains('varanda')) {
+      final rail = Paint()
+        ..color = const Color(0xFF94A3B8)
+        ..strokeWidth = 1.4;
+      for (double x = r.left + 6; x < r.right - 6; x += 10) {
+        canvas.drawLine(Offset(x, r.top + 6), Offset(x, r.top + 20), rail);
+      }
+    }
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Colors.white);
+    canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFF7F5F0));
 
+    for (final room in rooms) {
+      final rect = Rect.fromLTWH(
+        room.rectFrac.left * size.width,
+        room.rectFrac.top * size.height,
+        room.rectFrac.width * size.width,
+        room.rectFrac.height * size.height,
+      );
+      _drawFloor(canvas, rect, room.label);
+      _drawFurniture(canvas, rect, room.label);
+    }
+
+    // Paredes estruturais espessas por cima do piso/móveis.
     final wallPaint = Paint()
-      ..color = Colors.black87
+      ..color = const Color(0xFF211F1C)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
-
+      ..strokeWidth = max(4.0, size.shortestSide * 0.018)
+      ..strokeJoin = StrokeJoin.round;
     for (final room in rooms) {
       final rect = Rect.fromLTWH(
         room.rectFrac.left * size.width,
@@ -299,7 +456,12 @@ class FloorPlanPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: room.label,
-          style: const TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black87,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            backgroundColor: Color(0xB3FFFFFF),
+          ),
         ),
         textDirection: TextDirection.ltr,
       )..layout(maxWidth: rect.width - 8);
@@ -309,9 +471,9 @@ class FloorPlanPainter extends CustomPainter {
     canvas.drawRect(
       Offset.zero & size,
       Paint()
-        ..color = Colors.black
+        ..color = const Color(0xFF211F1C)
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 4,
+        ..strokeWidth = max(6.0, size.shortestSide * 0.03),
     );
   }
 
@@ -320,12 +482,50 @@ class FloorPlanPainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// Pintura: mapa de calor
+// Planta de fundo com imagem remota (Image.network), com indicador de
+// carregamento e fallback para asset local caso a rede falhe.
+// ---------------------------------------------------------------------------
+
+class NetworkFloorPlanImage extends StatelessWidget {
+  final String url;
+  final String? fallbackAsset;
+  const NetworkFloorPlanImage({super.key, required this.url, this.fallbackAsset});
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.network(
+      url,
+      fit: BoxFit.fill,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Container(
+          color: Colors.grey.shade100,
+          alignment: Alignment.center,
+          child: const CircularProgressIndicator(),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        if (fallbackAsset != null) {
+          return Image(image: AssetImage(fallbackAsset!), fit: BoxFit.fill);
+        }
+        return Container(
+          color: Colors.grey.shade200,
+          alignment: Alignment.center,
+          child: const Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey),
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pintura: mapa de calor com atenuação por paredes (ray-casting)
 // ---------------------------------------------------------------------------
 
 class HeatmapPainter extends CustomPainter {
   final List<RouterNode> routers;
-  HeatmapPainter(this.routers);
+  final List<WallSegment> walls;
+  HeatmapPainter(this.routers, this.walls);
 
   // Amostragem em grade: equilíbrio entre qualidade visual e performance.
   // A grade é depois suavizada com um blur (ver ImageFiltered no build).
@@ -337,13 +537,27 @@ class HeatmapPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (routers.isEmpty) return;
 
+    final wallsPx = walls
+        .map((w) => _PixelWall(
+              Offset(w.a.dx * size.width, w.a.dy * size.height),
+              Offset(w.b.dx * size.width, w.b.dy * size.height),
+              w.attenuationDb,
+            ))
+        .toList(growable: false);
+
     for (double y = 0; y < size.height; y += _cell) {
       final h = min(_cell, size.height - y);
       for (double x = 0; x < size.width; x += _cell) {
         final w = min(_cell, size.width - x);
         final center = Offset(x + w / 2, y + h / 2);
-        final dbm = _meshSignalAt(center, routers);
-        final t = _signalToT(dbm);
+
+        double best = -1000.0;
+        for (final r in routers) {
+          final v = _freeSpaceSignal(center, r) - _wallAttenuationBetween(center, r.position, wallsPx);
+          if (v > best) best = v;
+        }
+
+        final t = _signalToT(best);
         final alpha = _alphaForT(t);
         if (alpha <= 0.003) continue;
 
@@ -654,6 +868,16 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
     _model.addRouter(pos, model: selected);
   }
 
+  Widget _buildFloorPlanBackground(FloorPlanDef plan) {
+    if (plan.imageUrl != null) {
+      return NetworkFloorPlanImage(url: plan.imageUrl!, fallbackAsset: plan.assetPath);
+    }
+    if (plan.mode == FloorPlanRenderMode.image && plan.assetPath != null) {
+      return Image(image: AssetImage(plan.assetPath!), fit: BoxFit.fill);
+    }
+    return CustomPaint(painter: FloorPlanPainter(plan.rooms));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -704,12 +928,7 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
                                     children: [
                                       Positioned.fill(
                                         child: RepaintBoundary(
-                                          child: _model.currentPlan.mode == FloorPlanRenderMode.image
-                                              ? Image(
-                                                  image: AssetImage(_model.currentPlan.assetPath!),
-                                                  fit: BoxFit.fill,
-                                                )
-                                              : CustomPaint(painter: FloorPlanPainter(_model.currentPlan.rooms)),
+                                          child: _buildFloorPlanBackground(_model.currentPlan),
                                         ),
                                       ),
                                       Positioned.fill(
@@ -720,7 +939,7 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
                                             tileMode: TileMode.decal,
                                           ),
                                           child: CustomPaint(
-                                            painter: HeatmapPainter(List.of(_model.routers)),
+                                            painter: HeatmapPainter(List.of(_model.routers), _model.currentPlan.wallSegments),
                                           ),
                                         ),
                                       ),
