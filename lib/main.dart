@@ -113,69 +113,61 @@ class FloorPlanDef {
   });
 }
 
-const String kApartmentAsset = 'assets/planta_casa.webp';
-const String kApartmentNetworkUrl =
-    'https://raw.githubusercontent.com/Rogerdev5690/netfloor/main/assets/planta_casa.webp';
+const String kGitHubRawBase = 'https://raw.githubusercontent.com/Rogerdev5690/netfloor/main/assets';
 
 const List<FloorPlanDef> kFloorPlanLibrary = [
   FloorPlanDef(
-    id: 'casa_standard',
-    name: 'Casa Standard',
-    subtitle: '2 Quartos · Sala · Cozinha · Banheiro',
-    mode: FloorPlanRenderMode.drawn,
-    aspectRatio: 1.35,
-    rooms: [
-      RoomDef('Quarto 1', Rect.fromLTWH(0.00, 0.00, 0.33, 0.50)),
-      RoomDef('Quarto 2', Rect.fromLTWH(0.33, 0.00, 0.33, 0.50)),
-      RoomDef('Banheiro', Rect.fromLTWH(0.66, 0.00, 0.34, 0.50)),
-      RoomDef('Sala', Rect.fromLTWH(0.00, 0.50, 0.60, 0.50)),
-      RoomDef('Cozinha', Rect.fromLTWH(0.60, 0.50, 0.40, 0.50)),
-    ],
-    wallSegments: [
-      WallSegment(Offset(0.33, 0.00), Offset(0.33, 0.50)),
-      WallSegment(Offset(0.66, 0.00), Offset(0.66, 0.50)),
-      WallSegment(Offset(0.00, 0.50), Offset(1.00, 0.50)),
-      WallSegment(Offset(0.60, 0.50), Offset(0.60, 1.00)),
-    ],
-  ),
-  FloorPlanDef(
-    id: 'casa_sobrado',
-    name: 'Casa Sobrado / Ampla',
-    subtitle: '3 Quartos · Suíte · Sala Integrada · Varanda',
-    mode: FloorPlanRenderMode.drawn,
-    aspectRatio: 1.6,
-    rooms: [
-      RoomDef('Quarto 1', Rect.fromLTWH(0.00, 0.00, 0.25, 0.35)),
-      RoomDef('Quarto 2', Rect.fromLTWH(0.25, 0.00, 0.25, 0.35)),
-      RoomDef('Quarto 3', Rect.fromLTWH(0.50, 0.00, 0.25, 0.35)),
-      RoomDef('Suíte', Rect.fromLTWH(0.75, 0.00, 0.25, 0.35)),
-      RoomDef('Sala Integrada', Rect.fromLTWH(0.00, 0.35, 0.65, 0.65)),
-      RoomDef('Varanda', Rect.fromLTWH(0.65, 0.35, 0.35, 0.65)),
-    ],
-    wallSegments: [
-      WallSegment(Offset(0.25, 0.00), Offset(0.25, 0.35)),
-      WallSegment(Offset(0.50, 0.00), Offset(0.50, 0.35)),
-      WallSegment(Offset(0.75, 0.00), Offset(0.75, 0.35)),
-      WallSegment(Offset(0.00, 0.35), Offset(1.00, 0.35)),
-      WallSegment(Offset(0.65, 0.35), Offset(0.65, 1.00), attenuationDb: 3.5),
-    ],
-  ),
-  FloorPlanDef(
-    id: 'apartamento_compacto',
-    name: 'Apartamento Compacto',
-    subtitle: '2 Quartos · Cozinha Americana · Varanda',
+    id: 'casa_2_quartos',
+    name: 'Casa 2 Quartos',
+    subtitle: '2 Dorms · Lavanderia · Cozinha · Sala de Estar/Jantar',
     mode: FloorPlanRenderMode.image,
-    imageUrl: kApartmentNetworkUrl,
-    assetPath: kApartmentAsset,
-    aspectRatio: 1200 / 800,
-    // Aproximação das paredes internas visíveis na foto (não medidas a laser).
+    imageUrl: '$kGitHubRawBase/casa_2_quartos.jpg',
+    assetPath: 'assets/casa_2_quartos.jpg',
+    aspectRatio: 736 / 1138,
+    // Aproximação das paredes internas visíveis na planta (não medidas a laser).
     wallSegments: [
-      WallSegment(Offset(0.44, 0.00), Offset(0.44, 0.37)),
-      WallSegment(Offset(0.64, 0.00), Offset(0.64, 0.37)),
-      WallSegment(Offset(0.44, 0.37), Offset(1.00, 0.37)),
-      WallSegment(Offset(0.44, 0.37), Offset(0.44, 1.00)),
-      WallSegment(Offset(0.64, 0.37), Offset(0.64, 0.63)),
-      WallSegment(Offset(0.64, 0.63), Offset(1.00, 0.63)),
+      WallSegment(Offset(0.60, 0.02), Offset(0.60, 0.50)),
+      WallSegment(Offset(0.02, 0.28), Offset(0.42, 0.28)),
+      WallSegment(Offset(0.38, 0.28), Offset(0.38, 0.50)),
+      WallSegment(Offset(0.60, 0.16), Offset(0.98, 0.16)),
+      WallSegment(Offset(0.02, 0.50), Offset(0.47, 0.50)),
+      WallSegment(Offset(0.47, 0.50), Offset(0.47, 0.75)),
+      WallSegment(Offset(0.02, 0.72), Offset(0.47, 0.72)),
+      WallSegment(Offset(0.60, 0.75), Offset(0.60, 1.00), attenuationDb: 3.5),
+    ],
+  ),
+  FloorPlanDef(
+    id: 'casa_3_quartos',
+    name: 'Casa 3 Quartos',
+    subtitle: 'Suíte · 2 Quartos · 2 Banheiros · Varanda',
+    mode: FloorPlanRenderMode.image,
+    imageUrl: '$kGitHubRawBase/casa_3_quartos.png',
+    assetPath: 'assets/casa_3_quartos.png',
+    aspectRatio: 1152 / 2048,
+    wallSegments: [
+      WallSegment(Offset(0.52, 0.02), Offset(0.52, 0.98)),
+      WallSegment(Offset(0.02, 0.34), Offset(0.52, 0.34)),
+      WallSegment(Offset(0.02, 0.45), Offset(0.52, 0.45)),
+      WallSegment(Offset(0.02, 0.66), Offset(0.52, 0.66)),
+      WallSegment(Offset(0.02, 0.78), Offset(0.52, 0.78)),
+      WallSegment(Offset(0.55, 0.16), Offset(0.98, 0.16)),
+      WallSegment(Offset(0.55, 0.56), Offset(0.98, 0.56)),
+      WallSegment(Offset(0.55, 0.90), Offset(0.98, 0.90), attenuationDb: 3.5),
+    ],
+  ),
+  FloorPlanDef(
+    id: 'apartamento_2_quartos',
+    name: 'Apartamento 2 Quartos',
+    subtitle: '2 Quartos · Cozinha Americana · Sala de Estar (6x8)',
+    mode: FloorPlanRenderMode.image,
+    imageUrl: '$kGitHubRawBase/apartamento_2_quartos.jpg',
+    assetPath: 'assets/apartamento_2_quartos.jpg',
+    aspectRatio: 736 / 1104,
+    wallSegments: [
+      WallSegment(Offset(0.50, 0.05), Offset(0.50, 0.92)),
+      WallSegment(Offset(0.02, 0.38), Offset(0.50, 0.38)),
+      WallSegment(Offset(0.34, 0.38), Offset(0.34, 0.55)),
+      WallSegment(Offset(0.02, 0.55), Offset(0.50, 0.55)),
     ],
   ),
   FloorPlanDef(
@@ -213,7 +205,7 @@ class RouterNode {
 /// CustomPainter do mapa de calor seja re-renderizado durante o arraste,
 /// sem reconstruir toda a árvore de widgets.
 class NetworkModel extends ChangeNotifier {
-  FloorPlanDef currentPlan = kFloorPlanLibrary[2]; // Apartamento Compacto (planta real)
+  FloorPlanDef currentPlan = kFloorPlanLibrary[2]; // Apartamento 2 Quartos (planta real)
   RouterModelType selectedModel = RouterModelType.huaweiAx3;
   final List<RouterNode> routers = [];
   int _counter = 0;
@@ -770,7 +762,7 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
   final NetworkModel _model = NetworkModel();
   late final AnimationController _pingController;
   static const double _markerRadius = 20.0;
-  Size _lastCanvasSize = const Size(320, 320 / (1200 / 800));
+  Size _lastCanvasSize = const Size(320, 320 / (736 / 1104));
 
   @override
   void initState() {

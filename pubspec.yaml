@@ -17,4 +17,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/planta_casa.webp
+    - assets/casa_2_quartos.jpg
+    - assets/casa_3_quartos.png
+    - assets/apartamento_2_quartos.jpg
