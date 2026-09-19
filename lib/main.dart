@@ -1,4 +1,4 @@
-// NetFloor v6.0 — simulador de mapa de calor Wi-Fi + NetFloor Diagnostic.
+// NetFloor v7.0 — simulador de mapa de calor Wi-Fi 2.5D (vários pavimentos) + NetFloor Diagnostic.
 //
 // pubspec.yaml (dependências necessárias):
 //
@@ -11,7 +11,7 @@
 //   flutter:
 //     uses-material-design: true
 //     assets:
-//       - assets/floorplans/  # casa_2_quartos.jpg, casa_3_quartos.png, apartamento_2_quartos.jpg
+//       - assets/floorplans/  # casa_2q.png, sobrado_1andar.png (+ sobrado_terreo.png e edificio_corporativo.png quando existirem)
 //
 // Este arquivo compila para Flutter Web/PWA (usa dart:js_interop). Os recursos
 // nativos do Android (varredura Wi-Fi, RSSI, ping) chegam pela ponte JS
@@ -138,19 +138,19 @@ const List<RouterModelSpec> kRouterCatalog = [
 RouterModelSpec _specFor(RouterModelType type) => kRouterCatalog.firstWhere((s) => s.type == type);
 
 // ---------------------------------------------------------------------------
-// Biblioteca de plantas baixas.
+// Projetos, pavimentos e plantas baixas.
 //
-// Cada planta carrega, além da aparência visual, uma lista de `wallSegments`
-// (paredes vetorizadas em coordenadas fracionárias) usada pelo motor de
-// ray-casting do mapa de calor para atenuar o sinal ao atravessar paredes.
+// Um PROJETO tem um ou mais PAVIMENTOS (térreo, 1º andar...) e cada pavimento
+// usa uma planta (FloorPlanDef) com `wallSegments` (paredes vetorizadas em
+// coordenadas fracionárias) para o ray-casting de atenuação.
 //
-// As plantas do template são imagens em assets/floorplans/ (carregadas via
-// Image.network com fallback para o asset embutido). Plantas enviadas pelo
-// usuário vivem só em memória (Uint8List + Image.memory), sem dart:io, e não
-// têm paredes mapeadas. O escritório é desenhado vetorialmente.
+// Cada planta pode vir de: imagem remota (imageUrl) -> asset embutido
+// (assetPath) -> desenho vetorial (rooms). Se o PNG ainda não existe em
+// assets/floorplans/, o app cai sozinho no desenho vetorial; basta soltar o
+// arquivo com o nome esperado na pasta (e ajustar o aspectRatio, se mudar).
+// Plantas enviadas pelo usuário vivem só em memória (Uint8List + Image.memory),
+// sem dart:io, e não têm paredes mapeadas.
 // ---------------------------------------------------------------------------
-
-enum FloorPlanRenderMode { image, drawn }
 
 class RoomDef {
   final String label;
@@ -169,18 +169,16 @@ class FloorPlanDef {
   final String id;
   final String name;
   final String subtitle;
-  final FloorPlanRenderMode mode;
   final String? imageUrl; // imagem remota (Image.network), se disponível
   final String? assetPath; // asset local: fallback da imagem remota, ou única fonte
   final Uint8List? memoryBytes; // planta enviada pelo usuário (Image.memory)
   final double aspectRatio;
-  final List<RoomDef> rooms;
+  final List<RoomDef> rooms; // desenho vetorial (usado quando não há imagem)
   final List<WallSegment> wallSegments;
   const FloorPlanDef({
     required this.id,
     required this.name,
     required this.subtitle,
-    required this.mode,
     this.imageUrl,
     this.assetPath,
     this.memoryBytes,
@@ -192,79 +190,134 @@ class FloorPlanDef {
   bool get isCustom => memoryBytes != null;
 }
 
+class FloorDef {
+  final String label;
+  final FloorPlanDef plan;
+  const FloorDef(this.label, this.plan);
+}
+
+class ProjectDef {
+  final String id;
+  final String name;
+  final String subtitle;
+  final List<FloorDef> floors;
+  final bool isCustom;
+  const ProjectDef({
+    required this.id,
+    required this.name,
+    required this.subtitle,
+    required this.floors,
+    this.isCustom = false,
+  });
+}
+
+String floorLabel(int index) => index == 0 ? 'Térreo' : '${index}º Andar';
+
 const String kGitHubRawBase = 'https://raw.githubusercontent.com/Rogerdev5690/netfloor/main/assets/floorplans';
 
-const List<FloorPlanDef> kFloorPlanLibrary = [
-  FloorPlanDef(
-    id: 'casa_2_quartos',
-    name: 'Casa 2 Quartos',
-    subtitle: '2 Dorms · Lavanderia · Cozinha · Sala de Estar/Jantar',
-    mode: FloorPlanRenderMode.image,
-    imageUrl: '$kGitHubRawBase/casa_2_quartos.jpg',
-    assetPath: 'assets/floorplans/casa_2_quartos.jpg',
-    aspectRatio: 736 / 1138,
-    // Aproximação das paredes internas visíveis na planta (não medidas a laser).
-    wallSegments: [
-      WallSegment(Offset(0.60, 0.02), Offset(0.60, 0.50)),
-      WallSegment(Offset(0.02, 0.28), Offset(0.42, 0.28)),
-      WallSegment(Offset(0.38, 0.28), Offset(0.38, 0.50)),
-      WallSegment(Offset(0.60, 0.16), Offset(0.98, 0.16)),
-      WallSegment(Offset(0.02, 0.50), Offset(0.47, 0.50)),
-      WallSegment(Offset(0.47, 0.50), Offset(0.47, 0.75)),
-      WallSegment(Offset(0.02, 0.72), Offset(0.47, 0.72)),
-      WallSegment(Offset(0.60, 0.75), Offset(0.60, 1.00), attenuationDb: 3.5),
-    ],
+const FloorPlanDef kPlanCasa2q = FloorPlanDef(
+  id: 'casa_2q',
+  name: 'Casa Térrea 2 Quartos',
+  subtitle: '2 Quartos · Cozinha · Sala · Banheiro',
+  imageUrl: '$kGitHubRawBase/casa_2q.png',
+  assetPath: 'assets/floorplans/casa_2q.png',
+  aspectRatio: 736 / 1105,
+  // Aproximação das paredes internas visíveis na planta (não medidas a laser).
+  wallSegments: [
+    WallSegment(Offset(0.50, 0.24), Offset(0.50, 0.52)),
+    WallSegment(Offset(0.50, 0.24), Offset(0.91, 0.24)),
+    WallSegment(Offset(0.62, 0.49), Offset(0.92, 0.49)),
+    WallSegment(Offset(0.62, 0.49), Offset(0.62, 0.625)),
+    WallSegment(Offset(0.62, 0.625), Offset(0.92, 0.625)),
+    WallSegment(Offset(0.52, 0.62), Offset(0.52, 0.90)),
+  ],
+);
+
+// Térreo do sobrado: sem imagem ainda (assets/floorplans/sobrado_terreo.png).
+// Enquanto o PNG não existir, o app desenha esta versão vetorial.
+const FloorPlanDef kPlanSobradoTerreo = FloorPlanDef(
+  id: 'sobrado_terreo',
+  name: 'Sobrado — Térreo',
+  subtitle: 'Garagem · Salas · Cozinha · Varanda',
+  assetPath: 'assets/floorplans/sobrado_terreo.png',
+  aspectRatio: 940 / 1496,
+  rooms: [
+    RoomDef('Varanda', Rect.fromLTWH(0.00, 0.00, 1.00, 0.16)),
+    RoomDef('Sala de Jantar', Rect.fromLTWH(0.00, 0.16, 0.50, 0.28)),
+    RoomDef('Cozinha', Rect.fromLTWH(0.50, 0.16, 0.50, 0.28)),
+    RoomDef('Sala de TV', Rect.fromLTWH(0.00, 0.44, 0.48, 0.32)),
+    RoomDef('Lavabo', Rect.fromLTWH(0.48, 0.44, 0.20, 0.14)),
+    RoomDef('Despensa', Rect.fromLTWH(0.68, 0.44, 0.32, 0.14)),
+    RoomDef('Garagem', Rect.fromLTWH(0.48, 0.58, 0.52, 0.42)),
+    RoomDef('Hall', Rect.fromLTWH(0.00, 0.76, 0.48, 0.24)),
+  ],
+  wallSegments: [
+    WallSegment(Offset(0.00, 0.16), Offset(1.00, 0.16)),
+    WallSegment(Offset(0.48, 0.44), Offset(0.48, 1.00)),
+    WallSegment(Offset(0.48, 0.58), Offset(1.00, 0.58)),
+    WallSegment(Offset(0.68, 0.44), Offset(0.68, 0.58)),
+    WallSegment(Offset(0.00, 0.76), Offset(0.48, 0.76)),
+  ],
+);
+
+const FloorPlanDef kPlanSobrado1Andar = FloorPlanDef(
+  id: 'sobrado_1andar',
+  name: 'Sobrado — 1º Andar',
+  subtitle: 'Área íntima · 3 Quartos · Banheiro',
+  imageUrl: '$kGitHubRawBase/sobrado_1andar.png',
+  assetPath: 'assets/floorplans/sobrado_1andar.png',
+  aspectRatio: 940 / 1496,
+  // Imagem em perspectiva 3D: as paredes abaixo são só uma aproximação.
+  wallSegments: [
+    WallSegment(Offset(0.595, 0.23), Offset(0.595, 0.555)),
+    WallSegment(Offset(0.60, 0.39), Offset(0.95, 0.39)),
+    WallSegment(Offset(0.60, 0.555), Offset(0.95, 0.555)),
+    WallSegment(Offset(0.52, 0.555), Offset(0.52, 0.70)),
+    WallSegment(Offset(0.44, 0.23), Offset(0.44, 0.41)),
+  ],
+);
+
+// Prédio/escritório: sem imagem ainda (assets/floorplans/edificio_corporativo.png).
+const FloorPlanDef kPlanEscritorio = FloorPlanDef(
+  id: 'edificio_corporativo',
+  name: 'Edifício Corporativo',
+  subtitle: 'Open Space · Sala de Reunião · Diretoria · Copa',
+  assetPath: 'assets/floorplans/edificio_corporativo.png',
+  aspectRatio: 1.6,
+  rooms: [
+    RoomDef('Open Space', Rect.fromLTWH(0.00, 0.00, 0.60, 1.00)),
+    RoomDef('Sala de Reunião', Rect.fromLTWH(0.60, 0.00, 0.40, 0.40)),
+    RoomDef('Diretoria', Rect.fromLTWH(0.60, 0.40, 0.40, 0.30)),
+    RoomDef('Copa', Rect.fromLTWH(0.60, 0.70, 0.40, 0.30)),
+  ],
+  wallSegments: [
+    WallSegment(Offset(0.60, 0.00), Offset(0.60, 1.00), attenuationDb: 10.0),
+    WallSegment(Offset(0.60, 0.40), Offset(1.00, 0.40)),
+    WallSegment(Offset(0.60, 0.70), Offset(1.00, 0.70)),
+  ],
+);
+
+const List<ProjectDef> kProjectLibrary = [
+  ProjectDef(
+    id: 'casa_2q',
+    name: 'Casa Térrea 2 Quartos',
+    subtitle: '1 pavimento · 2 Quartos · Cozinha · Sala · Banheiro',
+    floors: [FloorDef('Térreo', kPlanCasa2q)],
   ),
-  FloorPlanDef(
-    id: 'casa_3_quartos',
-    name: 'Casa 3 Quartos',
-    subtitle: 'Suíte · 2 Quartos · 2 Banheiros · Varanda',
-    mode: FloorPlanRenderMode.image,
-    imageUrl: '$kGitHubRawBase/casa_3_quartos.png',
-    assetPath: 'assets/floorplans/casa_3_quartos.png',
-    aspectRatio: 1152 / 2048,
-    wallSegments: [
-      WallSegment(Offset(0.52, 0.02), Offset(0.52, 0.98)),
-      WallSegment(Offset(0.02, 0.34), Offset(0.52, 0.34)),
-      WallSegment(Offset(0.02, 0.45), Offset(0.52, 0.45)),
-      WallSegment(Offset(0.02, 0.66), Offset(0.52, 0.66)),
-      WallSegment(Offset(0.02, 0.78), Offset(0.52, 0.78)),
-      WallSegment(Offset(0.55, 0.16), Offset(0.98, 0.16)),
-      WallSegment(Offset(0.55, 0.56), Offset(0.98, 0.56)),
-      WallSegment(Offset(0.55, 0.90), Offset(0.98, 0.90), attenuationDb: 3.5),
-    ],
+  ProjectDef(
+    id: 'sobrado',
+    name: 'Sobrado (2 pavimentos)',
+    subtitle: 'Térreo: garagem e salas · 1º Andar: área íntima',
+    floors: [FloorDef('Térreo', kPlanSobradoTerreo), FloorDef('1º Andar', kPlanSobrado1Andar)],
   ),
-  FloorPlanDef(
-    id: 'apartamento_2_quartos',
-    name: 'Apartamento 2 Quartos',
-    subtitle: '2 Quartos · Cozinha Americana · Sala de Estar (6x8)',
-    mode: FloorPlanRenderMode.image,
-    imageUrl: '$kGitHubRawBase/apartamento_2_quartos.jpg',
-    assetPath: 'assets/floorplans/apartamento_2_quartos.jpg',
-    aspectRatio: 736 / 1104,
-    wallSegments: [
-      WallSegment(Offset(0.50, 0.05), Offset(0.50, 0.92)),
-      WallSegment(Offset(0.02, 0.38), Offset(0.50, 0.38)),
-      WallSegment(Offset(0.34, 0.38), Offset(0.34, 0.55)),
-      WallSegment(Offset(0.02, 0.55), Offset(0.50, 0.55)),
-    ],
-  ),
-  FloorPlanDef(
-    id: 'escritorio',
-    name: 'Escritório Open Space',
-    subtitle: 'Open Space · Sala de Reunião · Diretoria · Copa',
-    mode: FloorPlanRenderMode.drawn,
-    aspectRatio: 1.6,
-    rooms: [
-      RoomDef('Open Space', Rect.fromLTWH(0.00, 0.00, 0.60, 1.00)),
-      RoomDef('Sala de Reunião', Rect.fromLTWH(0.60, 0.00, 0.40, 0.40)),
-      RoomDef('Diretoria', Rect.fromLTWH(0.60, 0.40, 0.40, 0.30)),
-      RoomDef('Copa', Rect.fromLTWH(0.60, 0.70, 0.40, 0.30)),
-    ],
-    wallSegments: [
-      WallSegment(Offset(0.60, 0.00), Offset(0.60, 1.00), attenuationDb: 10.0),
-      WallSegment(Offset(0.60, 0.40), Offset(1.00, 0.40)),
-      WallSegment(Offset(0.60, 0.70), Offset(1.00, 0.70)),
+  ProjectDef(
+    id: 'edificio',
+    name: 'Edifício Corporativo',
+    subtitle: '3 pavimentos · Open Space · Reunião · Diretoria · Copa',
+    floors: [
+      FloorDef('Térreo', kPlanEscritorio),
+      FloorDef('1º Andar', kPlanEscritorio),
+      FloorDef('2º Andar', kPlanEscritorio),
     ],
   ),
 ];
@@ -275,37 +328,55 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
 
 class RouterNode {
   final String id;
-  Offset position;
+  Offset frac; // posição normalizada (0..1) dentro do pavimento
+  int floor; // índice do pavimento onde o roteador está instalado
   RouterModelType model;
-  RouterNode({required this.id, required this.position, required this.model});
+  RouterNode({required this.id, required this.frac, required this.floor, required this.model});
 }
 
 const double kDefaultHeatOpacity = 0.48;
 
-/// Estado da rede Mesh. Usa ChangeNotifier para permitir que apenas o
-/// CustomPainter do mapa de calor seja re-renderizado durante o arraste,
-/// sem reconstruir toda a árvore de widgets.
+/// Estado do simulador (projeto, pavimentos e roteadores). Usa ChangeNotifier
+/// para que só o CustomPainter do mapa de calor seja re-renderizado durante o
+/// arraste, sem reconstruir toda a árvore de widgets.
 class NetworkModel extends ChangeNotifier {
-  final List<FloorPlanDef> customPlans = [];
-  FloorPlanDef currentPlan = kFloorPlanLibrary[2]; // Apartamento 2 Quartos (planta real)
+  final List<ProjectDef> customProjects = [];
+  ProjectDef currentProject = kProjectLibrary[0];
+  List<FloorDef> floors = [...kProjectLibrary[0].floors];
+  int floorIndex = 0;
   RouterModelType selectedModel = RouterModelType.huaweiAx3;
   double heatOpacity = kDefaultHeatOpacity;
   final List<RouterNode> routers = [];
   int _counter = 0;
 
-  List<FloorPlanDef> get library => [...kFloorPlanLibrary, ...customPlans];
+  List<ProjectDef> get library => [...kProjectLibrary, ...customProjects];
+  FloorPlanDef get currentPlan => floors[floorIndex].plan;
+  List<RouterNode> get routersOnFloor => routers.where((r) => r.floor == floorIndex).toList();
 
-  void setFloorPlan(FloorPlanDef plan) {
-    if (currentPlan.id == plan.id) return;
-    currentPlan = plan;
+  void setProject(ProjectDef project) {
+    currentProject = project;
+    floors = [...project.floors];
+    floorIndex = 0;
     routers.clear();
     notifyListeners();
   }
 
-  void addCustomPlan(FloorPlanDef plan) {
-    customPlans.add(plan);
-    currentPlan = plan;
-    routers.clear();
+  void addCustomProject(ProjectDef project) {
+    customProjects.add(project);
+    setProject(project);
+  }
+
+  void setFloor(int index) {
+    if (index < 0 || index >= floors.length || index == floorIndex) return;
+    floorIndex = index;
+    notifyListeners();
+  }
+
+  /// Acrescenta pavimentos ao projeto atual e passa a mostrar o primeiro deles.
+  void addFloors(List<FloorDef> extra) {
+    if (extra.isEmpty) return;
+    floors = [...floors, ...extra];
+    floorIndex = floors.length - extra.length;
     notifyListeners();
   }
 
@@ -320,14 +391,14 @@ class NetworkModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void addRouter(Offset position, {RouterModelType? model}) {
-    routers.add(RouterNode(id: 'r${_counter++}', position: position, model: model ?? selectedModel));
+  void addRouter(Offset frac, {RouterModelType? model}) {
+    routers.add(RouterNode(id: 'r${_counter++}', frac: frac, floor: floorIndex, model: model ?? selectedModel));
     notifyListeners();
   }
 
-  void moveRouter(String id, Offset position) {
+  void moveRouter(String id, Offset frac) {
     final router = routers.firstWhere((r) => r.id == id);
-    router.position = position;
+    router.frac = frac;
     notifyListeners();
   }
 
@@ -339,20 +410,19 @@ class NetworkModel extends ChangeNotifier {
 }
 
 // ---------------------------------------------------------------------------
-// Modelo de propagação de sinal
-// Sinal(x,y) = max_i ( Ptx_i - 22*log10(d_i) - atenuação de paredes_i ),
-// Ptx_i conforme o modelo de hardware de cada roteador.
+// Modelo de propagação de sinal (2.5D)
+//
+//   Sinal(x,y) = max_i ( Ptx_i - 22*log10(d3D_i) - perda de paredes - perda de lajes )
+//   d3D = sqrt(dx² + dy² + (Δandares · altura do piso)²)
+//   perda de lajes = 15 dB por andar atravessado
+//
+// Os pavimentos são empilhados sobre a mesma pegada (mesma posição fracionária
+// x,y em cada andar). As paredes usadas são as do pavimento exibido.
 // ---------------------------------------------------------------------------
 
 const double kPixelsPerMeter = 45.0; // escala visual da planta
-
-/// Componente de espaço livre do sinal (sem paredes), em dBm.
-double _freeSpaceSignal(Offset point, RouterNode router) {
-  final distancePx = (point - router.position).distance;
-  final distanceM = max(distancePx / kPixelsPerMeter, 1.0);
-  final ptx = _specFor(router.model).txPowerDbm;
-  return ptx - 22 * (log(distanceM) / ln10);
-}
+const double kFloorHeightM = 3.0; // altura entre pisos
+const double kSlabLossDb = 15.0; // laje de concreto, por andar
 
 /// Teste de interseção entre dois segmentos de reta (caso geral).
 bool _segmentsIntersect(Offset p1, Offset p2, Offset p3, Offset p4) {
@@ -439,7 +509,7 @@ class FloorPlanPainter extends CustomPainter {
 
   bool _isWetArea(String label) {
     final l = label.toLowerCase();
-    return l.contains('banheiro') || l.contains('cozinha') || l.contains('copa');
+    return l.contains('banheiro') || l.contains('lavabo') || l.contains('cozinha') || l.contains('copa');
   }
 
   void _drawFloor(Canvas canvas, Rect r, String label) {
@@ -490,7 +560,7 @@ class FloorPlanPainter extends CustomPainter {
     } else if (l.contains('cozinha') || l.contains('copa')) {
       canvas.drawRect(Rect.fromLTWH(r.left, r.top, r.width * 0.20, r.height), metal);
       canvas.drawRect(Rect.fromLTWH(r.left + r.width * 0.04, r.top + r.height * 0.10, r.width * 0.12, r.height * 0.14), white);
-    } else if (l.contains('banheiro')) {
+    } else if (l.contains('banheiro') || l.contains('lavabo')) {
       canvas.drawOval(Rect.fromLTWH(r.right - r.width * 0.32, r.bottom - r.height * 0.30, r.width * 0.24, r.height * 0.20), white);
       canvas.drawRect(Rect.fromLTWH(r.left + r.width * 0.08, r.top + r.height * 0.08, r.width * 0.22, r.height * 0.12), white);
     } else if (l.contains('reunião') ||
@@ -568,13 +638,13 @@ class FloorPlanPainter extends CustomPainter {
 
 // ---------------------------------------------------------------------------
 // Planta de fundo com imagem remota (Image.network), com indicador de
-// carregamento e fallback para asset local caso a rede falhe.
+// carregamento e um fallback (asset local ou desenho vetorial) se a rede falhar.
 // ---------------------------------------------------------------------------
 
 class NetworkFloorPlanImage extends StatelessWidget {
   final String url;
-  final String? fallbackAsset;
-  const NetworkFloorPlanImage({super.key, required this.url, this.fallbackAsset});
+  final Widget fallback;
+  const NetworkFloorPlanImage({super.key, required this.url, required this.fallback});
 
   @override
   Widget build(BuildContext context) {
@@ -589,29 +659,22 @@ class NetworkFloorPlanImage extends StatelessWidget {
           child: const CircularProgressIndicator(),
         );
       },
-      errorBuilder: (context, error, stackTrace) {
-        if (fallbackAsset != null) {
-          return Image(image: AssetImage(fallbackAsset!), fit: BoxFit.fill);
-        }
-        return Container(
-          color: Colors.grey.shade200,
-          alignment: Alignment.center,
-          child: const Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey),
-        );
-      },
+      errorBuilder: (context, error, stackTrace) => fallback,
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// Pintura: mapa de calor com atenuação por paredes (ray-casting)
+// Pintura: mapa de calor 2.5D com atenuação por paredes (ray-casting) e por
+// lajes (roteadores de outros pavimentos).
 // ---------------------------------------------------------------------------
 
 class HeatmapPainter extends CustomPainter {
   final List<RouterNode> routers;
   final List<WallSegment> walls;
   final double maxAlpha;
-  HeatmapPainter(this.routers, this.walls, this.maxAlpha);
+  final int floorIndex; // pavimento exibido
+  HeatmapPainter(this.routers, this.walls, this.maxAlpha, this.floorIndex);
 
   // Amostragem em grade: equilíbrio entre qualidade visual e performance.
   // A grade é depois suavizada com um blur (ver ImageFiltered no build).
@@ -631,6 +694,11 @@ class HeatmapPainter extends CustomPainter {
             ))
         .toList(growable: false);
 
+    // Pré-calcula, por roteador: posição em pixels, potência e andares de distância.
+    final positions = [for (final r in routers) Offset(r.frac.dx * size.width, r.frac.dy * size.height)];
+    final powers = [for (final r in routers) _specFor(r.model).txPowerDbm];
+    final floorGaps = [for (final r in routers) (r.floor - floorIndex).abs()];
+
     for (double y = 0; y < size.height; y += _cell) {
       final h = min(_cell, size.height - y);
       for (double x = 0; x < size.width; x += _cell) {
@@ -638,8 +706,14 @@ class HeatmapPainter extends CustomPainter {
         final center = Offset(x + w / 2, y + h / 2);
 
         double best = -1000.0;
-        for (final r in routers) {
-          final v = _freeSpaceSignal(center, r) - _wallAttenuationBetween(center, r.position, wallsPx);
+        for (var i = 0; i < positions.length; i++) {
+          final dxy = (center - positions[i]).distance;
+          final dz = floorGaps[i] * kFloorHeightM * kPixelsPerMeter;
+          final distM = max(sqrt(dxy * dxy + dz * dz) / kPixelsPerMeter, 1.0);
+          final v = powers[i] -
+              22 * (log(distM) / ln10) -
+              _wallAttenuationBetween(center, positions[i], wallsPx) -
+              floorGaps[i] * kSlabLossDb;
           if (v > best) best = v;
         }
 
@@ -667,7 +741,7 @@ class HeatmapPainter extends CustomPainter {
 // ---------------------------------------------------------------------------
 
 class RadarPingPainter extends CustomPainter {
-  final List<RouterNode> routers;
+  final List<RouterNode> routers; // só os do pavimento exibido
   final double t; // progresso da animação, 0..1, em loop
   RadarPingPainter(this.routers, this.t);
 
@@ -691,8 +765,9 @@ class RadarPingPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     for (final r in routers) {
-      _ring(canvas, r.position, t);
-      _ring(canvas, r.position, (t + 0.5) % 1.0);
+      final center = Offset(r.frac.dx * size.width, r.frac.dy * size.height);
+      _ring(canvas, center, t);
+      _ring(canvas, center, (t + 0.5) % 1.0);
     }
   }
 
@@ -857,7 +932,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
   late final AnimationController _pingController;
   static const double _markerRadius = 20.0;
   static const String _uploadSentinel = 'upload';
-  Size _lastCanvasSize = const Size(320, 320 / (736 / 1104));
+  Size _lastCanvasSize = const Size(320, 320 / (736 / 1105));
 
   @override
   void initState() {
@@ -872,11 +947,17 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
     super.dispose();
   }
 
-  Offset _clampToBounds(Offset pos, Size bounds) {
-    if (bounds.width <= 0 || bounds.height <= 0) return pos;
+  // Posições dos roteadores são frações (0..1) do pavimento; aqui convertemos
+  // de/para pixels do canvas atual.
+  Offset _toPx(Offset frac, Size b) => Offset(frac.dx * b.width, frac.dy * b.height);
+
+  Offset _clampFrac(Offset frac, Size b) {
+    if (b.width <= 0 || b.height <= 0) return frac;
+    final mx = _markerRadius / b.width;
+    final my = _markerRadius / b.height;
     return Offset(
-      pos.dx.clamp(_markerRadius, max(_markerRadius, bounds.width - _markerRadius)).toDouble(),
-      pos.dy.clamp(_markerRadius, max(_markerRadius, bounds.height - _markerRadius)).toDouble(),
+      frac.dx.clamp(mx, max(mx, 1 - mx)).toDouble(),
+      frac.dy.clamp(my, max(my, 1 - my)).toDouble(),
     );
   }
 
@@ -913,7 +994,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
     );
   }
 
-  Future<void> _showFloorPlanLibrary() async {
+  Future<void> _showProjectLibrary() async {
     final selected = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
@@ -931,27 +1012,27 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
                 color: Theme.of(ctx).colorScheme.primaryContainer,
                 child: ListTile(
                   leading: const Icon(Icons.upload_file, color: Colors.indigo),
-                  title: const Text('Carregar planta do dispositivo'),
-                  subtitle: const Text('PNG, JPG ou WEBP · fica só na memória'),
+                  title: const Text('Carregar plantas do dispositivo'),
+                  subtitle: const Text('Uma ou várias imagens (PNG, JPG, WEBP): cada uma vira um pavimento'),
                   onTap: () => Navigator.pop(ctx, _uploadSentinel),
                 ),
               ),
-              for (final plan in _model.library)
+              for (final project in _model.library)
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: Icon(
-                      plan.isCustom
+                      project.isCustom
                           ? Icons.photo_library_outlined
-                          : plan.mode == FloorPlanRenderMode.image
-                              ? Icons.image_outlined
-                              : Icons.grid_on_outlined,
+                          : project.floors.length > 1
+                              ? Icons.apartment
+                              : Icons.house_outlined,
                       color: Colors.indigo,
                     ),
-                    title: Text(plan.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(plan.subtitle),
-                    trailing: _model.currentPlan.id == plan.id ? const Icon(Icons.check_circle, color: Colors.indigo) : null,
-                    onTap: () => Navigator.pop(ctx, plan),
+                    title: Text(project.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(project.subtitle),
+                    trailing: _model.currentProject.id == project.id ? const Icon(Icons.check_circle, color: Colors.indigo) : null,
+                    onTap: () => Navigator.pop(ctx, project),
                   ),
                 ),
             ],
@@ -960,38 +1041,68 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
       ),
     );
     if (selected == _uploadSentinel) {
-      await _uploadPlan();
-    } else if (selected is FloorPlanDef) {
-      setState(() => _model.setFloorPlan(selected));
+      await _uploadProject();
+    } else if (selected is ProjectDef) {
+      setState(() => _model.setProject(selected));
     }
   }
 
-  /// Carrega uma planta como bytes na memória (Uint8List) — sem dart:io, para
-  /// funcionar igual em Web/PWA, no WebView do Android e no desktop.
-  Future<void> _uploadPlan() async {
-    try {
-      final file = await FilePicker.pickFile(
-        type: FileType.custom,
-        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
-      );
-      if (file == null) return;
-      final bytes = await file.readAsBytes();
+  /// Lê uma ou várias imagens como bytes na memória (Uint8List) — sem dart:io,
+  /// para funcionar igual em Web/PWA, no WebView do Android e no desktop. Cada
+  /// imagem vira um pavimento, na ordem em que foram selecionadas.
+  Future<List<FloorDef>> _pickFloorsFromDevice({required int firstIndex}) async {
+    final files = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
+    );
+    final floors = <FloorDef>[];
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    for (var i = 0; i < files.length; i++) {
+      final bytes = await files[i].readAsBytes();
       final codec = await ui.instantiateImageCodec(bytes);
       final frame = await codec.getNextFrame();
       final w = frame.image.width;
       final h = frame.image.height;
       frame.image.dispose();
       codec.dispose();
-      final plan = FloorPlanDef(
-        id: 'custom_${DateTime.now().microsecondsSinceEpoch}',
-        name: file.name,
-        subtitle: 'Planta personalizada · $w×$h px · sem paredes mapeadas',
-        mode: FloorPlanRenderMode.image,
-        memoryBytes: bytes,
-        aspectRatio: w / h,
+      floors.add(
+        FloorDef(
+          floorLabel(firstIndex + i),
+          FloorPlanDef(
+            id: 'custom_${stamp}_$i',
+            name: files[i].name,
+            subtitle: 'Planta personalizada · $w×$h px',
+            memoryBytes: bytes,
+            aspectRatio: w / h,
+          ),
+        ),
       );
-      if (!mounted) return;
-      setState(() => _model.addCustomPlan(plan));
+    }
+    return floors;
+  }
+
+  Future<void> _uploadProject() async {
+    try {
+      final floors = await _pickFloorsFromDevice(firstIndex: 0);
+      if (floors.isEmpty || !mounted) return;
+      final project = ProjectDef(
+        id: 'custom_${DateTime.now().microsecondsSinceEpoch}',
+        name: floors.length == 1 ? floors.first.plan.name : 'Projeto personalizado',
+        subtitle: '${floors.length} pavimento(s) · enviado do dispositivo · sem paredes mapeadas',
+        floors: floors,
+        isCustom: true,
+      );
+      setState(() => _model.addCustomProject(project));
+    } catch (e) {
+      if (mounted) _snack('Não foi possível carregar a imagem: $e');
+    }
+  }
+
+  Future<void> _addFloorsFromDevice() async {
+    try {
+      final floors = await _pickFloorsFromDevice(firstIndex: _model.floors.length);
+      if (floors.isEmpty || !mounted) return;
+      setState(() => _model.addFloors(floors));
     } catch (e) {
       if (mounted) _snack('Não foi possível carregar a imagem: $e');
     }
@@ -1046,24 +1157,37 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
   Future<void> _handleAddViaButton() async {
     final selected = await _pickModel();
     if (selected == null) return;
-    final size = _lastCanvasSize;
-    final offset = Offset(24.0 * (_model.routers.length % 5), 24.0 * (_model.routers.length % 3));
-    final pos = _clampToBounds(Offset(size.width / 2, size.height / 2) + offset, size);
+    final n = _model.routersOnFloor.length;
+    final frac = _clampFrac(Offset(0.5 + 0.06 * (n % 5), 0.5 + 0.04 * (n % 3)), _lastCanvasSize);
     setState(() => _model.setSelectedModel(selected));
-    _model.addRouter(pos, model: selected);
+    _model.addRouter(frac, model: selected);
   }
 
   Widget _buildFloorPlanBackground(FloorPlanDef plan) {
+    Widget vectorFallback() => plan.rooms.isNotEmpty
+        ? CustomPaint(painter: FloorPlanPainter(plan.rooms))
+        : Container(
+            color: Colors.grey.shade200,
+            alignment: Alignment.center,
+            child: const Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey),
+          );
+
     if (plan.memoryBytes != null) {
       return Image.memory(plan.memoryBytes!, fit: BoxFit.fill, gaplessPlayback: true);
     }
+    Widget assetImage() => Image.asset(
+          plan.assetPath!,
+          fit: BoxFit.fill,
+          errorBuilder: (context, error, stackTrace) => vectorFallback(),
+        );
     if (plan.imageUrl != null) {
-      return NetworkFloorPlanImage(url: plan.imageUrl!, fallbackAsset: plan.assetPath);
+      return NetworkFloorPlanImage(
+        url: plan.imageUrl!,
+        fallback: plan.assetPath != null ? assetImage() : vectorFallback(),
+      );
     }
-    if (plan.mode == FloorPlanRenderMode.image && plan.assetPath != null) {
-      return Image(image: AssetImage(plan.assetPath!), fit: BoxFit.fill);
-    }
-    return CustomPaint(painter: FloorPlanPainter(plan.rooms));
+    if (plan.assetPath != null) return assetImage();
+    return vectorFallback();
   }
 
   @override
@@ -1087,7 +1211,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
           IconButton(
             icon: const Icon(Icons.layers_outlined),
             tooltip: 'Biblioteca de Plantas',
-            onPressed: _showFloorPlanLibrary,
+            onPressed: _showProjectLibrary,
           ),
         ],
       ),
@@ -1095,6 +1219,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
         child: Column(
           children: [
             _buildLegend(),
+            AnimatedBuilder(animation: _model, builder: (context, _) => _buildFloorBar()),
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.all(12),
@@ -1114,8 +1239,12 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
                                 child: GestureDetector(
                                   behavior: HitTestBehavior.opaque,
                                   onTapUp: (details) {
-                                    final pos = _clampToBounds(details.localPosition, _lastCanvasSize);
-                                    _model.addRouter(pos);
+                                    final size = _lastCanvasSize;
+                                    final frac = Offset(
+                                      details.localPosition.dx / size.width,
+                                      details.localPosition.dy / size.height,
+                                    );
+                                    _model.addRouter(_clampFrac(frac, size));
                                   },
                                   child: Stack(
                                     children: [
@@ -1136,6 +1265,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
                                               List.of(_model.routers),
                                               _model.currentPlan.wallSegments,
                                               _model.heatOpacity,
+                                              _model.floorIndex,
                                             ),
                                           ),
                                         ),
@@ -1145,13 +1275,14 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
                                           animation: _pingController,
                                           builder: (context, _) {
                                             return CustomPaint(
-                                              painter: RadarPingPainter(_model.routers, _pingController.value),
+                                              painter: RadarPingPainter(_model.routersOnFloor, _pingController.value),
                                             );
                                           },
                                         ),
                                       ),
-                                      for (final r in _model.routers)
-                                        _buildRouterMarker(r, _lastCanvasSize),
+                                      for (final r in _model.routers.where((r) => r.floor != _model.floorIndex))
+                                        _buildGhostMarker(r, _lastCanvasSize),
+                                      for (final r in _model.routersOnFloor) _buildRouterMarker(r, _lastCanvasSize),
                                     ],
                                   ),
                                 ),
@@ -1172,21 +1303,72 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
     );
   }
 
+  /// Seletor de pavimento (térreo, 1º andar...) + botão para adicionar mais.
+  Widget _buildFloorBar() {
+    return SizedBox(
+      height: 44,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        children: [
+          for (var i = 0; i < _model.floors.length; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(
+                label: Text(() {
+                  final n = _model.routers.where((r) => r.floor == i).length;
+                  return n == 0 ? _model.floors[i].label : '${_model.floors[i].label} · $n';
+                }()),
+                selected: i == _model.floorIndex,
+                onSelected: (_) => _model.setFloor(i),
+              ),
+            ),
+          ActionChip(
+            avatar: const Icon(Icons.add, size: 18),
+            label: const Text('Pavimento'),
+            tooltip: 'Adicionar pavimento(s) a partir de imagens do dispositivo',
+            onPressed: _addFloorsFromDevice,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildRouterMarker(RouterNode router, Size bounds) {
+    final p = _toPx(router.frac, bounds);
     return Positioned(
-      left: router.position.dx - _markerRadius,
-      top: router.position.dy - _markerRadius,
+      left: p.dx - _markerRadius,
+      top: p.dy - _markerRadius,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: () {}, // absorve o toque para não "vazar" para o fundo e criar um roteador duplicado
         onPanUpdate: (details) {
-          final newPos = _clampToBounds(router.position + details.delta, bounds);
-          _model.moveRouter(router.id, newPos);
+          final delta = Offset(details.delta.dx / bounds.width, details.delta.dy / bounds.height);
+          _model.moveRouter(router.id, _clampFrac(router.frac + delta, bounds));
         },
         child: SizedBox(
           width: _markerRadius * 2,
           height: _markerRadius * 2,
           child: CustomPaint(painter: RouterDevicePainter(router.model)),
+        ),
+      ),
+    );
+  }
+
+  /// Roteador instalado em outro pavimento: aparece esmaecido, sem interação.
+  Widget _buildGhostMarker(RouterNode router, Size bounds) {
+    final p = _toPx(router.frac, bounds);
+    return Positioned(
+      left: p.dx - _markerRadius,
+      top: p.dy - _markerRadius,
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: 0.55,
+          child: SizedBox(
+            width: _markerRadius * 2,
+            height: _markerRadius * 2,
+            child: CustomPaint(painter: RouterDevicePainter(router.model)),
+          ),
         ),
       ),
     );
@@ -1263,6 +1445,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
     );
   }
 }
+
 
 // ===========================================================================
 // PARTE 2 — NETFLOOR DIAGNOSTIC (varredura de espectro, sinal e latência)
@@ -2078,6 +2261,7 @@ class SpectrumTab extends StatelessWidget {
             },
           ),
         ),
+        _ConnectedApCard(c: c),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -2110,6 +2294,74 @@ class SpectrumTab extends StatelessWidget {
           ),
         _ChannelHealthCard(band: c.band, health: health, best: best),
       ],
+    );
+  }
+}
+
+/// Detalhes da rede conectada: SSID, BSSID, banda/canal, largura e dBm reais.
+class _ConnectedApCard extends StatelessWidget {
+  final DiagnosticsController c;
+  const _ConnectedApCard({required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    WifiNetwork? ap;
+    for (final n in c.networks) {
+      if (n.connected) {
+        ap = n;
+        break;
+      }
+    }
+    final link = c.link;
+    if (ap == null && (link == null || !link.connected)) return const SizedBox.shrink();
+
+    final ssid = ap != null ? ap.displayName : (link!.ssid.isEmpty ? '(rede oculta)' : link.ssid);
+    final rawBssid = ap?.bssid ?? link!.bssid;
+    final bssid = rawBssid.isEmpty || rawBssid == '02:00:00:00:00:00' ? 'oculto pelo Android' : rawBssid;
+    final bandChannel = ap != null
+        ? '${ap.band == WifiBand.ghz24 ? '2.4' : '5'} GHz · canal ${ap.channel}'
+        : '${link!.bandLabel} · canal ${link.channel}';
+    final width = ap != null ? '${ap.widthMhz} MHz' : '--';
+    final level = ap != null ? '${ap.level} dBm' : '${link!.rssi} dBm';
+
+    Widget kv(String label, String value) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        );
+
+    return Card(
+      margin: const EdgeInsets.only(top: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(width: 10, height: 10, decoration: const BoxDecoration(color: kConnectedColor, shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                const Text('Rede conectada', style: TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 24,
+              runSpacing: 10,
+              children: [
+                kv('SSID', ssid),
+                kv('BSSID', bssid),
+                kv('Banda · canal', bandChannel),
+                kv('Largura', width),
+                kv('Sinal', level),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
