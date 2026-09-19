@@ -1482,8 +1482,8 @@ class SimulatedDiagnostics implements DiagnosticsSource {
   double _rssiTarget = -55;
 
   static const List<WifiNetwork> _base = [
-    WifiNetwork(ssid: 'MinhaRede-5G', bssid: 'AA:BB:CC:00:11:22', frequency: 5220, centerFreq: 5210, widthMhz: 80, level: -52, connected: true),
-    WifiNetwork(ssid: 'MinhaRede-2G', bssid: 'AA:BB:CC:00:11:23', frequency: 2437, centerFreq: 2437, widthMhz: 20, level: -50),
+    WifiNetwork(ssid: 'MinhaRede', bssid: 'AA:BB:CC:00:11:22', frequency: 5220, centerFreq: 5210, widthMhz: 80, level: -52, connected: true),
+    WifiNetwork(ssid: 'MinhaRede', bssid: 'AA:BB:CC:00:11:23', frequency: 2437, centerFreq: 2437, widthMhz: 20, level: -50),
     WifiNetwork(ssid: 'VIVO-1A2B', bssid: '10:20:30:40:50:01', frequency: 2412, centerFreq: 2412, widthMhz: 20, level: -63),
     WifiNetwork(ssid: 'Claro_WiFi_45', bssid: '10:20:30:40:50:02', frequency: 2437, centerFreq: 2437, widthMhz: 20, level: -72),
     WifiNetwork(ssid: 'NET_9F3C', bssid: '10:20:30:40:50:03', frequency: 2462, centerFreq: 2462, widthMhz: 20, level: -58),
@@ -1535,7 +1535,7 @@ class SimulatedDiagnostics implements DiagnosticsSource {
                 : 150;
     return LinkInfo(
       connected: true,
-      ssid: 'MinhaRede-5G',
+      ssid: 'MinhaRede',
       bssid: 'AA:BB:CC:00:11:22',
       rssi: _rssi.round(),
       frequency: 5220,
@@ -1592,9 +1592,11 @@ class ChannelHealth {
   });
 }
 
-List<ChannelHealth> computeChannelHealth(WifiBand band, List<WifiNetwork> all) {
+List<ChannelHealth> computeChannelHealth(WifiBand band, List<WifiNetwork> all, {String connectedSsid = ''}) {
   final channels = band == WifiBand.ghz24 ? [for (var c = 1; c <= 13; c++) c] : kChannels5Ghz;
-  final neighbors = all.where((n) => n.band == band && !n.connected).toList();
+  final neighbors = all
+      .where((n) => n.band == band && !n.connected && !(connectedSsid.isNotEmpty && n.ssid == connectedSsid))
+      .toList();
   final out = <ChannelHealth>[];
   for (final ch in channels) {
     final fc = channelToMhz(band, ch);
@@ -1662,6 +1664,16 @@ class DiagnosticsController extends ChangeNotifier {
   bool _signalBusy = false;
   bool _pingBusy = false;
   int _pingTick = 0;
+
+  /// Nome da rede em que o aparelho está conectado (vem da varredura; se o
+  /// Android ocultar o BSSID, cai para o nome lido da conexão atual).
+  String get connectedSsid {
+    for (final n in networks) {
+      if (n.connected && n.ssid.isNotEmpty) return n.ssid;
+    }
+    final s = link?.ssid ?? '';
+    return s.startsWith('<') ? '' : s;
+  }
 
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -2018,7 +2030,9 @@ class SpectrumTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final nets = c.networks.where((n) => n.band == c.band).toList();
-    final health = computeChannelHealth(c.band, c.networks);
+    final mySsid = c.connectedSsid;
+    final health = computeChannelHealth(c.band, c.networks, connectedSsid: mySsid);
+    final hasSibling = mySsid.isNotEmpty && nets.any((n) => !n.connected && n.ssid == mySsid);
     final best = ([...health]..sort((a, b) => a.score != b.score ? a.score.compareTo(b.score) : a.channel.compareTo(b.channel)))
         .take(3)
         .toList();
@@ -2036,12 +2050,15 @@ class SpectrumTab extends StatelessWidget {
           onSelectionChanged: (s) => c.setBand(s.first),
         ),
         const SizedBox(height: 10),
-        const Wrap(
+        Wrap(
           spacing: 16,
           runSpacing: 4,
           children: [
-            _LegendDot(color: kConnectedColor, label: 'Rede conectada'),
-            _LegendDot(color: kNeighborColor, label: 'Redes vizinhas'),
+            _LegendDot(
+              color: kConnectedColor,
+              label: hasSibling ? 'Sua rede "$mySsid" (conectada em outra banda)' : 'Rede conectada',
+            ),
+            const _LegendDot(color: kNeighborColor, label: 'Redes vizinhas'),
           ],
         ),
         const SizedBox(height: 8),
@@ -2055,7 +2072,7 @@ class SpectrumTab extends StatelessWidget {
               final width = wide ? max(constraints.maxWidth, 980.0) : constraints.maxWidth;
               final chart = CustomPaint(
                 size: Size(width, constraints.maxHeight),
-                painter: SpectrumPainter(band: c.band, networks: nets),
+                painter: SpectrumPainter(band: c.band, networks: nets, connectedSsid: mySsid),
               );
               return wide ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: chart) : chart;
             },
@@ -2133,7 +2150,7 @@ class _ChannelHealthCard extends StatelessWidget {
             const Text('Saúde do canal', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
             const SizedBox(height: 2),
             const Text(
-              'Interferência estimada por canal de 20 MHz, contando só as redes vizinhas.',
+              'Interferência estimada por canal de 20 MHz, contando só as redes vizinhas (a sua rede fica de fora).',
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
             const SizedBox(height: 10),
@@ -2200,11 +2217,16 @@ class _ChannelHealthCard extends StatelessWidget {
 }
 
 /// Gráfico de espectro: um trapézio por rede (largura = 20/40/80/160 MHz,
-/// altura = intensidade). Conectada em cor acesa; vizinhas em cinza.
+/// altura = intensidade). A rede conectada — e a de mesmo nome em outra banda,
+/// como o 2.4 GHz do roteador em que você está no 5 GHz — fica em cor acesa e
+/// sublinhada; vizinhas em cinza.
 class SpectrumPainter extends CustomPainter {
   final WifiBand band;
   final List<WifiNetwork> networks;
-  SpectrumPainter({required this.band, required this.networks});
+  final String connectedSsid;
+  SpectrumPainter({required this.band, required this.networks, this.connectedSsid = ''});
+
+  bool _isMine(WifiNetwork n) => n.connected || (connectedSsid.isNotEmpty && n.ssid == connectedSsid);
 
   static const double _left = 36, _right = 10, _top = 16, _bottom = 30;
   static const double _minDbm = -100, _maxDbm = -30;
@@ -2223,9 +2245,20 @@ class SpectrumPainter extends CustomPainter {
     bool centerX = false,
     bool anchorBottom = false,
     bool rightAlign = false,
+    bool underline = false,
   }) {
     final tp = TextPainter(
-      text: TextSpan(text: text, style: TextStyle(fontSize: size, color: color, fontWeight: weight)),
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: size,
+          color: color,
+          fontWeight: weight,
+          decoration: underline ? TextDecoration.underline : TextDecoration.none,
+          decorationColor: color,
+          decorationThickness: 2,
+        ),
+      ),
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
@@ -2277,8 +2310,8 @@ class SpectrumPainter extends CustomPainter {
         ..close();
     }
 
-    final neighbors = networks.where((n) => !n.connected).toList()..sort((a, b) => a.level.compareTo(b.level));
-    final connected = networks.where((n) => n.connected).toList();
+    final neighbors = networks.where((n) => !_isMine(n)).toList()..sort((a, b) => a.level.compareTo(b.level));
+    final connected = networks.where(_isMine).toList();
 
     for (final n in neighbors) {
       final path = trapezoid(n);
@@ -2309,6 +2342,15 @@ class SpectrumPainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5,
       );
+      // Sublinhado: barra grossa no eixo, cobrindo a largura do canal da rede.
+      canvas.drawLine(
+        Offset(xOf(n.centerFreq - n.widthMhz / 2), plot.bottom - 1.5),
+        Offset(xOf(n.centerFreq + n.widthMhz / 2), plot.bottom - 1.5),
+        Paint()
+          ..color = kConnectedColor
+          ..strokeWidth = 4
+          ..strokeCap = StrokeCap.round,
+      );
     }
 
     // Rótulos: rede conectada + as 4 vizinhas mais fortes.
@@ -2318,8 +2360,19 @@ class SpectrumPainter extends CustomPainter {
           size: 9, color: Colors.white70, centerX: true, anchorBottom: true, maxWidth: 90);
     }
     for (final n in connected) {
-      _text(canvas, '${n.displayName} (${n.level} dBm)', Offset(xOf(n.centerFreq.toDouble()), yOf(n.level.toDouble()) - 2),
-          size: 11, color: kConnectedColor, weight: FontWeight.bold, centerX: true, anchorBottom: true, maxWidth: 150);
+      final sibling = !n.connected;
+      _text(
+        canvas,
+        '${n.displayName} (${n.level} dBm)${sibling ? ' · sua rede' : ''}',
+        Offset(xOf(n.centerFreq.toDouble()), yOf(n.level.toDouble()) - 2),
+        size: 11,
+        color: kConnectedColor,
+        weight: FontWeight.bold,
+        centerX: true,
+        anchorBottom: true,
+        maxWidth: 170,
+        underline: true,
+      );
     }
     canvas.restore();
   }
