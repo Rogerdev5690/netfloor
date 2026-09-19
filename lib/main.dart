@@ -1,5 +1,33 @@
+// NetFloor v6.0 — simulador de mapa de calor Wi-Fi + NetFloor Diagnostic.
+//
+// pubspec.yaml (dependências necessárias):
+//
+//   dependencies:
+//     flutter:
+//       sdk: flutter
+//     file_picker: ^13.1.0   # upload de plantas em memória (bytes), sem dart:io
+//     fl_chart: ^1.2.0       # gráficos de linha (sinal e latência)
+//
+//   flutter:
+//     uses-material-design: true
+//     assets:
+//       - assets/floorplans/  # casa_2_quartos.jpg, casa_3_quartos.png, apartamento_2_quartos.jpg
+//
+// Este arquivo compila para Flutter Web/PWA (usa dart:js_interop). Os recursos
+// nativos do Android (varredura Wi-Fi, RSSI, ping) chegam pela ponte JS
+// `NetFloorNative`, exposta pelo app NetFloor Shell (WebView). Fora do Shell
+// (navegador comum / PWA), a aba Diagnóstico roda em modo simulação.
+
+import 'dart:async';
+import 'dart:convert';
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:math';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
+
+import 'package:file_picker/file_picker.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 void main() => runApp(const NetFloorApp());
@@ -13,10 +41,58 @@ class NetFloorApp extends StatelessWidget {
       title: 'NetFloor',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
-      home: const NetFloorHomePage(),
+      home: const NetFloorShell(),
     );
   }
 }
+
+/// Navegação principal: Simulador (mapa de calor) e Diagnóstico (Wi-Fi).
+class NetFloorShell extends StatefulWidget {
+  const NetFloorShell({super.key});
+
+  @override
+  State<NetFloorShell> createState() => _NetFloorShellState();
+}
+
+class _NetFloorShellState extends State<NetFloorShell> {
+  final DiagnosticsController _diag = DiagnosticsController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _diag.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: IndexedStack(
+        index: _index,
+        children: [
+          TickerMode(enabled: _index == 0, child: const SimulatorPage()),
+          TickerMode(enabled: _index == 1, child: DiagnosticPage(controller: _diag, active: _index == 1)),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _index,
+        onDestinationSelected: (i) => setState(() => _index = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.map_outlined), selectedIcon: Icon(Icons.map), label: 'Simulador'),
+          NavigationDestination(
+            icon: Icon(Icons.network_check_outlined),
+            selectedIcon: Icon(Icons.network_check),
+            label: 'Diagnóstico',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===========================================================================
+// PARTE 1 — SIMULADOR DE MAPA DE CALOR
+// ===========================================================================
 
 // ---------------------------------------------------------------------------
 // Catálogo de roteadores: cada modelo tem uma potência de transmissão (dBm)
@@ -68,11 +144,10 @@ RouterModelSpec _specFor(RouterModelType type) => kRouterCatalog.firstWhere((s) 
 // (paredes vetorizadas em coordenadas fracionárias) usada pelo motor de
 // ray-casting do mapa de calor para atenuar o sinal ao atravessar paredes.
 //
-// A "Apartamento Compacto" usa a foto real enviada pelo usuário, carregada
-// via rede (Image.network) com fallback para o asset local embutido caso a
-// rede falhe. As demais não têm foto de referência disponível, então são
-// desenhadas proceduralmente com piso texturizado, paredes espessas e
-// silhuetas de móveis para um acabamento mais "ilustrado".
+// As plantas do template são imagens em assets/floorplans/ (carregadas via
+// Image.network com fallback para o asset embutido). Plantas enviadas pelo
+// usuário vivem só em memória (Uint8List + Image.memory), sem dart:io, e não
+// têm paredes mapeadas. O escritório é desenhado vetorialmente.
 // ---------------------------------------------------------------------------
 
 enum FloorPlanRenderMode { image, drawn }
@@ -97,6 +172,7 @@ class FloorPlanDef {
   final FloorPlanRenderMode mode;
   final String? imageUrl; // imagem remota (Image.network), se disponível
   final String? assetPath; // asset local: fallback da imagem remota, ou única fonte
+  final Uint8List? memoryBytes; // planta enviada pelo usuário (Image.memory)
   final double aspectRatio;
   final List<RoomDef> rooms;
   final List<WallSegment> wallSegments;
@@ -107,13 +183,16 @@ class FloorPlanDef {
     required this.mode,
     this.imageUrl,
     this.assetPath,
+    this.memoryBytes,
     required this.aspectRatio,
     this.rooms = const [],
     this.wallSegments = const [],
   });
+
+  bool get isCustom => memoryBytes != null;
 }
 
-const String kGitHubRawBase = 'https://raw.githubusercontent.com/Rogerdev5690/netfloor/main/assets';
+const String kGitHubRawBase = 'https://raw.githubusercontent.com/Rogerdev5690/netfloor/main/assets/floorplans';
 
 const List<FloorPlanDef> kFloorPlanLibrary = [
   FloorPlanDef(
@@ -122,7 +201,7 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
     subtitle: '2 Dorms · Lavanderia · Cozinha · Sala de Estar/Jantar',
     mode: FloorPlanRenderMode.image,
     imageUrl: '$kGitHubRawBase/casa_2_quartos.jpg',
-    assetPath: 'assets/casa_2_quartos.jpg',
+    assetPath: 'assets/floorplans/casa_2_quartos.jpg',
     aspectRatio: 736 / 1138,
     // Aproximação das paredes internas visíveis na planta (não medidas a laser).
     wallSegments: [
@@ -142,7 +221,7 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
     subtitle: 'Suíte · 2 Quartos · 2 Banheiros · Varanda',
     mode: FloorPlanRenderMode.image,
     imageUrl: '$kGitHubRawBase/casa_3_quartos.png',
-    assetPath: 'assets/casa_3_quartos.png',
+    assetPath: 'assets/floorplans/casa_3_quartos.png',
     aspectRatio: 1152 / 2048,
     wallSegments: [
       WallSegment(Offset(0.52, 0.02), Offset(0.52, 0.98)),
@@ -161,7 +240,7 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
     subtitle: '2 Quartos · Cozinha Americana · Sala de Estar (6x8)',
     mode: FloorPlanRenderMode.image,
     imageUrl: '$kGitHubRawBase/apartamento_2_quartos.jpg',
-    assetPath: 'assets/apartamento_2_quartos.jpg',
+    assetPath: 'assets/floorplans/apartamento_2_quartos.jpg',
     aspectRatio: 736 / 1104,
     wallSegments: [
       WallSegment(Offset(0.50, 0.05), Offset(0.50, 0.92)),
@@ -172,7 +251,7 @@ const List<FloorPlanDef> kFloorPlanLibrary = [
   ),
   FloorPlanDef(
     id: 'escritorio',
-    name: 'Escritório / Comercial',
+    name: 'Escritório Open Space',
     subtitle: 'Open Space · Sala de Reunião · Diretoria · Copa',
     mode: FloorPlanRenderMode.drawn,
     aspectRatio: 1.6,
@@ -201,19 +280,37 @@ class RouterNode {
   RouterNode({required this.id, required this.position, required this.model});
 }
 
+const double kDefaultHeatOpacity = 0.48;
+
 /// Estado da rede Mesh. Usa ChangeNotifier para permitir que apenas o
 /// CustomPainter do mapa de calor seja re-renderizado durante o arraste,
 /// sem reconstruir toda a árvore de widgets.
 class NetworkModel extends ChangeNotifier {
+  final List<FloorPlanDef> customPlans = [];
   FloorPlanDef currentPlan = kFloorPlanLibrary[2]; // Apartamento 2 Quartos (planta real)
   RouterModelType selectedModel = RouterModelType.huaweiAx3;
+  double heatOpacity = kDefaultHeatOpacity;
   final List<RouterNode> routers = [];
   int _counter = 0;
+
+  List<FloorPlanDef> get library => [...kFloorPlanLibrary, ...customPlans];
 
   void setFloorPlan(FloorPlanDef plan) {
     if (currentPlan.id == plan.id) return;
     currentPlan = plan;
     routers.clear();
+    notifyListeners();
+  }
+
+  void addCustomPlan(FloorPlanDef plan) {
+    customPlans.add(plan);
+    currentPlan = plan;
+    routers.clear();
+    notifyListeners();
+  }
+
+  void setHeatOpacity(double value) {
+    heatOpacity = value;
     notifyListeners();
   }
 
@@ -289,7 +386,7 @@ double _wallAttenuationBetween(Offset from, Offset to, List<_PixelWall> wallsPx)
 
 // ---------------------------------------------------------------------------
 // Paleta de calor estilo "jet", com desvanecimento (alpha) nas áreas de
-// sinal fraco para deixar a planta visível por baixo (overlay ~40-50%).
+// sinal fraco para deixar a planta visível por baixo do overlay.
 // ---------------------------------------------------------------------------
 
 const double _kDbmFloor = -30.0; // t = 0.0 (sem cobertura)
@@ -323,10 +420,9 @@ Color _jetColor(double t) {
 }
 
 /// Suaviza a transição para transparente nas áreas de sinal muito fraco.
-/// maxAlpha ~0.48 mantém a planta ilustrada visível por baixo do overlay,
-/// como pedido (opacidade de 40% a 50%).
-double _alphaForT(double t) {
-  const lo = 0.04, hi = 0.55, maxAlpha = 0.48;
+/// [maxAlpha] é a opacidade máxima do overlay (ajustável pelo usuário).
+double _alphaForT(double t, double maxAlpha) {
+  const lo = 0.04, hi = 0.55;
   final x = ((t - lo) / (hi - lo)).clamp(0.0, 1.0);
   final smooth = x * x * (3 - 2 * x);
   return smooth * maxAlpha;
@@ -334,7 +430,7 @@ double _alphaForT(double t) {
 
 // ---------------------------------------------------------------------------
 // Pintura: planta baixa ilustrada (piso texturizado + paredes espessas +
-// silhuetas de móveis), usada quando não há foto real disponível.
+// silhuetas de móveis), usada quando não há imagem disponível.
 // ---------------------------------------------------------------------------
 
 class FloorPlanPainter extends CustomPainter {
@@ -419,13 +515,15 @@ class FloorPlanPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     canvas.drawRect(Offset.zero & size, Paint()..color = const Color(0xFFF7F5F0));
 
+    Rect rectOf(RoomDef room) => Rect.fromLTWH(
+          room.rectFrac.left * size.width,
+          room.rectFrac.top * size.height,
+          room.rectFrac.width * size.width,
+          room.rectFrac.height * size.height,
+        );
+
     for (final room in rooms) {
-      final rect = Rect.fromLTWH(
-        room.rectFrac.left * size.width,
-        room.rectFrac.top * size.height,
-        room.rectFrac.width * size.width,
-        room.rectFrac.height * size.height,
-      );
+      final rect = rectOf(room);
       _drawFloor(canvas, rect, room.label);
       _drawFurniture(canvas, rect, room.label);
     }
@@ -437,12 +535,7 @@ class FloorPlanPainter extends CustomPainter {
       ..strokeWidth = max(4.0, size.shortestSide * 0.018)
       ..strokeJoin = StrokeJoin.round;
     for (final room in rooms) {
-      final rect = Rect.fromLTWH(
-        room.rectFrac.left * size.width,
-        room.rectFrac.top * size.height,
-        room.rectFrac.width * size.width,
-        room.rectFrac.height * size.height,
-      );
+      final rect = rectOf(room);
       canvas.drawRect(rect, wallPaint);
 
       final tp = TextPainter(
@@ -517,7 +610,8 @@ class NetworkFloorPlanImage extends StatelessWidget {
 class HeatmapPainter extends CustomPainter {
   final List<RouterNode> routers;
   final List<WallSegment> walls;
-  HeatmapPainter(this.routers, this.walls);
+  final double maxAlpha;
+  HeatmapPainter(this.routers, this.walls, this.maxAlpha);
 
   // Amostragem em grade: equilíbrio entre qualidade visual e performance.
   // A grade é depois suavizada com um blur (ver ImageFiltered no build).
@@ -550,7 +644,7 @@ class HeatmapPainter extends CustomPainter {
         }
 
         final t = _signalToT(best);
-        final alpha = _alphaForT(t);
+        final alpha = _alphaForT(t, maxAlpha);
         if (alpha <= 0.003) continue;
 
         _cellPaint.color = _jetColor(t).withOpacity(alpha);
@@ -748,20 +842,21 @@ class RouterDevicePainter extends CustomPainter {
 }
 
 // ---------------------------------------------------------------------------
-// Tela principal
+// Tela do simulador
 // ---------------------------------------------------------------------------
 
-class NetFloorHomePage extends StatefulWidget {
-  const NetFloorHomePage({super.key});
+class SimulatorPage extends StatefulWidget {
+  const SimulatorPage({super.key});
 
   @override
-  State<NetFloorHomePage> createState() => _NetFloorHomePageState();
+  State<SimulatorPage> createState() => _SimulatorPageState();
 }
 
-class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerProviderStateMixin {
+class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProviderStateMixin {
   final NetworkModel _model = NetworkModel();
   late final AnimationController _pingController;
   static const double _markerRadius = 20.0;
+  static const String _uploadSentinel = 'upload';
   Size _lastCanvasSize = const Size(320, 320 / (736 / 1104));
 
   @override
@@ -773,6 +868,7 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
   @override
   void dispose() {
     _pingController.dispose();
+    _model.dispose();
     super.dispose();
   }
 
@@ -782,6 +878,10 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
       pos.dx.clamp(_markerRadius, max(_markerRadius, bounds.width - _markerRadius)).toDouble(),
       pos.dy.clamp(_markerRadius, max(_markerRadius, bounds.height - _markerRadius)).toDouble(),
     );
+  }
+
+  void _snack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<RouterModelType?> _pickModel() {
@@ -814,11 +914,11 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
   }
 
   Future<void> _showFloorPlanLibrary() async {
-    final selected = await showModalBottomSheet<FloorPlanDef>(
+    final selected = await showModalBottomSheet<Object>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -826,15 +926,29 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
             children: [
               const Text('Biblioteca de Plantas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               const SizedBox(height: 12),
-              for (final plan in kFloorPlanLibrary)
+              Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                color: Theme.of(ctx).colorScheme.primaryContainer,
+                child: ListTile(
+                  leading: const Icon(Icons.upload_file, color: Colors.indigo),
+                  title: const Text('Carregar planta do dispositivo'),
+                  subtitle: const Text('PNG, JPG ou WEBP · fica só na memória'),
+                  onTap: () => Navigator.pop(ctx, _uploadSentinel),
+                ),
+              ),
+              for (final plan in _model.library)
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
                     leading: Icon(
-                      plan.mode == FloorPlanRenderMode.image ? Icons.image_outlined : Icons.grid_on_outlined,
+                      plan.isCustom
+                          ? Icons.photo_library_outlined
+                          : plan.mode == FloorPlanRenderMode.image
+                              ? Icons.image_outlined
+                              : Icons.grid_on_outlined,
                       color: Colors.indigo,
                     ),
-                    title: Text(plan.name),
+                    title: Text(plan.name, maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(plan.subtitle),
                     trailing: _model.currentPlan.id == plan.id ? const Icon(Icons.check_circle, color: Colors.indigo) : null,
                     onTap: () => Navigator.pop(ctx, plan),
@@ -845,9 +959,88 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
         ),
       ),
     );
-    if (selected != null) {
+    if (selected == _uploadSentinel) {
+      await _uploadPlan();
+    } else if (selected is FloorPlanDef) {
       setState(() => _model.setFloorPlan(selected));
     }
+  }
+
+  /// Carrega uma planta como bytes na memória (Uint8List) — sem dart:io, para
+  /// funcionar igual em Web/PWA, no WebView do Android e no desktop.
+  Future<void> _uploadPlan() async {
+    try {
+      final file = await FilePicker.pickFile(
+        type: FileType.custom,
+        allowedExtensions: const ['png', 'jpg', 'jpeg', 'webp'],
+      );
+      if (file == null) return;
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final w = frame.image.width;
+      final h = frame.image.height;
+      frame.image.dispose();
+      codec.dispose();
+      final plan = FloorPlanDef(
+        id: 'custom_${DateTime.now().microsecondsSinceEpoch}',
+        name: file.name,
+        subtitle: 'Planta personalizada · $w×$h px · sem paredes mapeadas',
+        mode: FloorPlanRenderMode.image,
+        memoryBytes: bytes,
+        aspectRatio: w / h,
+      );
+      if (!mounted) return;
+      setState(() => _model.addCustomPlan(plan));
+    } catch (e) {
+      if (mounted) _snack('Não foi possível carregar a imagem: $e');
+    }
+  }
+
+  void _showOpacitySheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheet) {
+          final percent = (_model.heatOpacity * 100).round();
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Opacidade do mapa de calor', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Slider(
+                          value: _model.heatOpacity,
+                          min: 0.15,
+                          max: 0.90,
+                          divisions: 15,
+                          label: '$percent%',
+                          onChanged: (v) {
+                            _model.setHeatOpacity(v);
+                            setSheet(() {});
+                          },
+                        ),
+                      ),
+                      SizedBox(width: 48, child: Text('$percent%', textAlign: TextAlign.end)),
+                    ],
+                  ),
+                  const Text(
+                    'Menos opacidade deixa a planta mais visível por baixo do sinal.',
+                    style: TextStyle(fontSize: 12, color: Colors.black54),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _handleAddViaButton() async {
@@ -861,6 +1054,9 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
   }
 
   Widget _buildFloorPlanBackground(FloorPlanDef plan) {
+    if (plan.memoryBytes != null) {
+      return Image.memory(plan.memoryBytes!, fit: BoxFit.fill, gaplessPlayback: true);
+    }
     if (plan.imageUrl != null) {
       return NetworkFloorPlanImage(url: plan.imageUrl!, fallbackAsset: plan.assetPath);
     }
@@ -883,6 +1079,11 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.opacity),
+            tooltip: 'Opacidade do mapa de calor',
+            onPressed: _showOpacitySheet,
+          ),
           IconButton(
             icon: const Icon(Icons.layers_outlined),
             tooltip: 'Biblioteca de Plantas',
@@ -931,7 +1132,11 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
                                             tileMode: TileMode.decal,
                                           ),
                                           child: CustomPaint(
-                                            painter: HeatmapPainter(List.of(_model.routers), _model.currentPlan.wallSegments),
+                                            painter: HeatmapPainter(
+                                              List.of(_model.routers),
+                                              _model.currentPlan.wallSegments,
+                                              _model.heatOpacity,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -1057,4 +1262,1474 @@ class _NetFloorHomePageState extends State<NetFloorHomePage> with SingleTickerPr
       ),
     );
   }
+}
+
+// ===========================================================================
+// PARTE 2 — NETFLOOR DIAGNOSTIC (varredura de espectro, sinal e latência)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Ponte nativa (Android): disponível apenas dentro do NetFloor Shell, que
+// expõe `window.NetFloorNative.postMessage(json)` e responde chamando
+// `window.__netfloorNativeResponse(json)`.
+// ---------------------------------------------------------------------------
+
+@JS('NetFloorNative')
+external JSObject? get _netFloorNative;
+
+class NativeBridge {
+  static bool get available => _netFloorNative != null;
+
+  static int _nextId = 1;
+  static final Map<int, Completer<Map<String, dynamic>>> _pending = {};
+  static bool _listening = false;
+
+  static void _listen() {
+    if (_listening) return;
+    _listening = true;
+    globalContext.setProperty(
+      '__netfloorNativeResponse'.toJS,
+      ((JSString raw) {
+        try {
+          final msg = jsonDecode(raw.toDart) as Map<String, dynamic>;
+          _pending.remove(msg['id'])?.complete(msg);
+        } catch (_) {}
+      }).toJS,
+    );
+  }
+
+  /// Chama um método nativo e devolve o campo `data` da resposta.
+  static Future<Map<String, dynamic>> call(
+    String method, {
+    Map<String, dynamic>? args,
+    Duration timeout = const Duration(seconds: 12),
+  }) async {
+    final channel = _netFloorNative;
+    if (channel == null) throw StateError('Ponte nativa indisponível');
+    _listen();
+    final id = _nextId++;
+    final completer = Completer<Map<String, dynamic>>();
+    _pending[id] = completer;
+    channel.callMethod<JSAny?>('postMessage'.toJS, jsonEncode({'id': id, 'method': method, 'args': args ?? {}}).toJS);
+    final msg = await completer.future.timeout(timeout, onTimeout: () {
+      _pending.remove(id);
+      throw TimeoutException('Sem resposta do app Android ($method)');
+    });
+    if (msg['ok'] != true) throw StateError('${msg['error'] ?? 'erro desconhecido'}');
+    final data = msg['data'];
+    return data is Map ? data.cast<String, dynamic>() : <String, dynamic>{};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Modelos de dados do diagnóstico
+// ---------------------------------------------------------------------------
+
+enum WifiBand { ghz24, ghz5 }
+
+const List<int> kChannels5Ghz = [
+  36, 40, 44, 48, 52, 56, 60, 64, //
+  100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 144,
+  149, 153, 157, 161, 165,
+];
+
+int channelToMhz(WifiBand band, int channel) {
+  if (band == WifiBand.ghz24) return channel == 14 ? 2484 : 2407 + 5 * channel;
+  return 5000 + 5 * channel;
+}
+
+class WifiNetwork {
+  final String ssid;
+  final String bssid;
+  final int frequency; // MHz do canal primário
+  final int centerFreq; // MHz do centro do bloco (20/40/80/160 MHz)
+  final int widthMhz;
+  final int level; // dBm
+  final bool connected;
+  const WifiNetwork({
+    required this.ssid,
+    required this.bssid,
+    required this.frequency,
+    required this.centerFreq,
+    required this.widthMhz,
+    required this.level,
+    this.connected = false,
+  });
+
+  factory WifiNetwork.fromJson(Map<String, dynamic> j) {
+    final freq = (j['frequency'] as num?)?.toInt() ?? 0;
+    final center = (j['centerFreq'] as num?)?.toInt() ?? 0;
+    return WifiNetwork(
+      ssid: (j['ssid'] as String?) ?? '',
+      bssid: (j['bssid'] as String?) ?? '',
+      frequency: freq,
+      centerFreq: center > 0 ? center : freq,
+      widthMhz: (j['widthMhz'] as num?)?.toInt() ?? 20,
+      level: (j['level'] as num?)?.toInt() ?? -100,
+      connected: j['connected'] == true,
+    );
+  }
+
+  WifiBand? get band {
+    if (frequency >= 2400 && frequency < 2500) return WifiBand.ghz24;
+    if (frequency >= 5150 && frequency < 5900) return WifiBand.ghz5;
+    return null;
+  }
+
+  int get channel => band == WifiBand.ghz24 ? (frequency == 2484 ? 14 : (frequency - 2407) ~/ 5) : (frequency - 5000) ~/ 5;
+  double get lowMhz => centerFreq - widthMhz / 2;
+  double get highMhz => centerFreq + widthMhz / 2;
+  String get displayName => ssid.isEmpty ? '(rede oculta)' : ssid;
+}
+
+class LinkInfo {
+  final bool connected;
+  final String ssid;
+  final String bssid;
+  final int rssi;
+  final int frequency;
+  final int linkSpeedMbps;
+  final String gateway;
+  const LinkInfo({
+    required this.connected,
+    this.ssid = '',
+    this.bssid = '',
+    this.rssi = -100,
+    this.frequency = 0,
+    this.linkSpeedMbps = 0,
+    this.gateway = '',
+  });
+
+  factory LinkInfo.fromJson(Map<String, dynamic> j) {
+    return LinkInfo(
+      connected: j['connected'] == true,
+      ssid: (j['ssid'] as String?) ?? '',
+      bssid: (j['bssid'] as String?) ?? '',
+      rssi: (j['rssi'] as num?)?.toInt() ?? -100,
+      frequency: (j['frequency'] as num?)?.toInt() ?? 0,
+      linkSpeedMbps: (j['linkSpeed'] as num?)?.toInt() ?? 0,
+      gateway: (j['gateway'] as String?) ?? '',
+    );
+  }
+
+  int get channel => frequency >= 5000 ? (frequency - 5000) ~/ 5 : (frequency == 2484 ? 14 : (frequency - 2407) ~/ 5);
+  String get bandLabel => frequency >= 5000 ? '5 GHz' : '2.4 GHz';
+}
+
+class DiagPermissions {
+  final bool granted;
+  final bool locationServicesEnabled;
+  const DiagPermissions({required this.granted, required this.locationServicesEnabled});
+}
+
+// ---------------------------------------------------------------------------
+// Fontes de dados: nativa (via ponte do Shell Android) ou simulada.
+// ---------------------------------------------------------------------------
+
+abstract class DiagnosticsSource {
+  bool get isNative;
+  Future<DiagPermissions> ensurePermissions();
+  Future<List<WifiNetwork>> scan();
+  Future<LinkInfo?> linkInfo();
+
+  /// Latência em ms, ou null se o pacote foi perdido.
+  Future<double?> ping(String host);
+}
+
+const String kDnsHost = '8.8.8.8';
+
+class NativeBridgeDiagnostics implements DiagnosticsSource {
+  @override
+  bool get isNative => true;
+
+  @override
+  Future<DiagPermissions> ensurePermissions() async {
+    final d = await NativeBridge.call('permissions', timeout: const Duration(seconds: 90));
+    final granted = d['location'] == true || d['nearby'] == true;
+    return DiagPermissions(granted: granted, locationServicesEnabled: d['locationServices'] != false);
+  }
+
+  @override
+  Future<List<WifiNetwork>> scan() async {
+    final d = await NativeBridge.call('scan', timeout: const Duration(seconds: 20));
+    final list = (d['networks'] as List?) ?? const [];
+    final nets = list
+        .map((e) => WifiNetwork.fromJson((e as Map).cast<String, dynamic>()))
+        .where((n) => n.band != null)
+        .toList();
+    final error = d['error'];
+    if (nets.isEmpty && error != null) throw StateError('$error');
+    return nets;
+  }
+
+  @override
+  Future<LinkInfo?> linkInfo() async {
+    final d = await NativeBridge.call('linkInfo');
+    return LinkInfo.fromJson(d);
+  }
+
+  @override
+  Future<double?> ping(String host) async {
+    final d = await NativeBridge.call('ping', args: {'host': host}, timeout: const Duration(seconds: 8));
+    final ms = d['ms'];
+    return ms is num ? ms.toDouble() : null;
+  }
+}
+
+class SimulatedDiagnostics implements DiagnosticsSource {
+  final Random _rng = Random();
+  double _rssi = -55;
+  double _rssiTarget = -55;
+
+  static const List<WifiNetwork> _base = [
+    WifiNetwork(ssid: 'MinhaRede-5G', bssid: 'AA:BB:CC:00:11:22', frequency: 5220, centerFreq: 5210, widthMhz: 80, level: -52, connected: true),
+    WifiNetwork(ssid: 'MinhaRede-2G', bssid: 'AA:BB:CC:00:11:23', frequency: 2437, centerFreq: 2437, widthMhz: 20, level: -50),
+    WifiNetwork(ssid: 'VIVO-1A2B', bssid: '10:20:30:40:50:01', frequency: 2412, centerFreq: 2412, widthMhz: 20, level: -63),
+    WifiNetwork(ssid: 'Claro_WiFi_45', bssid: '10:20:30:40:50:02', frequency: 2437, centerFreq: 2437, widthMhz: 20, level: -72),
+    WifiNetwork(ssid: 'NET_9F3C', bssid: '10:20:30:40:50:03', frequency: 2462, centerFreq: 2462, widthMhz: 20, level: -58),
+    WifiNetwork(ssid: 'TP-LINK_7788', bssid: '10:20:30:40:50:04', frequency: 2462, centerFreq: 2462, widthMhz: 20, level: -80),
+    WifiNetwork(ssid: 'Vizinho_Casa', bssid: '10:20:30:40:50:05', frequency: 2422, centerFreq: 2432, widthMhz: 40, level: -76),
+    WifiNetwork(ssid: 'Oi_Fibra_22', bssid: '10:20:30:40:50:06', frequency: 2452, centerFreq: 2452, widthMhz: 20, level: -84),
+    WifiNetwork(ssid: 'VIVO-1A2B-5G', bssid: '10:20:30:40:50:11', frequency: 5180, centerFreq: 5180, widthMhz: 20, level: -70),
+    WifiNetwork(ssid: 'NET_9F3C_5G', bssid: '10:20:30:40:50:12', frequency: 5745, centerFreq: 5775, widthMhz: 80, level: -66),
+    WifiNetwork(ssid: 'Claro_5G_45', bssid: '10:20:30:40:50:13', frequency: 5500, centerFreq: 5510, widthMhz: 40, level: -78),
+    WifiNetwork(ssid: 'Apto_302', bssid: '10:20:30:40:50:14', frequency: 5785, centerFreq: 5785, widthMhz: 20, level: -74),
+    WifiNetwork(ssid: 'Escritorio_5G', bssid: '10:20:30:40:50:15', frequency: 5260, centerFreq: 5270, widthMhz: 40, level: -68),
+  ];
+
+  @override
+  bool get isNative => false;
+
+  @override
+  Future<DiagPermissions> ensurePermissions() async =>
+      const DiagPermissions(granted: true, locationServicesEnabled: true);
+
+  @override
+  Future<List<WifiNetwork>> scan() async {
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    return [
+      for (final n in _base)
+        WifiNetwork(
+          ssid: n.ssid,
+          bssid: n.bssid,
+          frequency: n.frequency,
+          centerFreq: n.centerFreq,
+          widthMhz: n.widthMhz,
+          level: n.level + _rng.nextInt(7) - 3,
+          connected: n.connected,
+        ),
+    ];
+  }
+
+  @override
+  Future<LinkInfo?> linkInfo() async {
+    if (_rng.nextDouble() < 0.12) _rssiTarget = -45.0 - _rng.nextInt(38);
+    _rssi += (_rssiTarget - _rssi) * 0.25 + (_rng.nextDouble() * 2 - 1);
+    _rssi = _rssi.clamp(-92.0, -38.0).toDouble();
+    final speed = _rssi > -55
+        ? 866
+        : _rssi > -65
+            ? 650
+            : _rssi > -75
+                ? 433
+                : 150;
+    return LinkInfo(
+      connected: true,
+      ssid: 'MinhaRede-5G',
+      bssid: 'AA:BB:CC:00:11:22',
+      rssi: _rssi.round(),
+      frequency: 5220,
+      linkSpeedMbps: speed,
+      gateway: '192.168.0.1',
+    );
+  }
+
+  @override
+  Future<double?> ping(String host) async {
+    await Future<void>.delayed(Duration(milliseconds: 40 + _rng.nextInt(80)));
+    if (_rng.nextDouble() < 0.03) return null;
+    if (host == kDnsHost) {
+      final spike = _rng.nextDouble() < 0.06 ? 40.0 + _rng.nextInt(60) : 0.0;
+      return 14 + _rng.nextDouble() * 18 + spike;
+    }
+    return 1.5 + _rng.nextDouble() * 4.5;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Saúde do canal: interferência estimada por canal de 20 MHz, considerando
+// apenas as redes vizinhas (a rede conectada não conta como interferência).
+// ---------------------------------------------------------------------------
+
+enum ChannelRating { excelente, bom, ruim }
+
+extension ChannelRatingUi on ChannelRating {
+  String get label => switch (this) {
+        ChannelRating.excelente => 'Excelente',
+        ChannelRating.bom => 'Bom',
+        ChannelRating.ruim => 'Ruim',
+      };
+
+  Color get color => switch (this) {
+        ChannelRating.excelente => const Color(0xFF16A34A),
+        ChannelRating.bom => const Color(0xFFD97706),
+        ChannelRating.ruim => const Color(0xFFDC2626),
+      };
+}
+
+class ChannelHealth {
+  final int channel;
+  final int freq;
+  final int overlapping;
+  final double score;
+  final ChannelRating rating;
+  const ChannelHealth({
+    required this.channel,
+    required this.freq,
+    required this.overlapping,
+    required this.score,
+    required this.rating,
+  });
+}
+
+List<ChannelHealth> computeChannelHealth(WifiBand band, List<WifiNetwork> all) {
+  final channels = band == WifiBand.ghz24 ? [for (var c = 1; c <= 13; c++) c] : kChannels5Ghz;
+  final neighbors = all.where((n) => n.band == band && !n.connected).toList();
+  final out = <ChannelHealth>[];
+  for (final ch in channels) {
+    final fc = channelToMhz(band, ch);
+    final lo = fc - 10.0;
+    final hi = fc + 10.0;
+    var score = 0.0;
+    var count = 0;
+    for (final n in neighbors) {
+      final overlap = (min(hi, n.highMhz) - max(lo, n.lowMhz)) / 20.0;
+      if (overlap <= 0) continue;
+      count++;
+      final strength = ((n.level + 95) / 55).clamp(0.0, 1.0).toDouble();
+      score += overlap.clamp(0.0, 1.0).toDouble() * strength;
+    }
+    final rating = score < 0.25
+        ? ChannelRating.excelente
+        : score < 1.0
+            ? ChannelRating.bom
+            : ChannelRating.ruim;
+    out.add(ChannelHealth(channel: ch, freq: fc, overlapping: count, score: score, rating: rating));
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Controlador do diagnóstico: mantém os dados e só roda os temporizadores da
+// aba visível (varredura a cada 30 s, sinal e ping a cada 1 s).
+// ---------------------------------------------------------------------------
+
+const int kMaxSamples = 60;
+
+class DiagnosticsController extends ChangeNotifier {
+  DiagnosticsSource _source = SimulatedDiagnostics();
+  DiagnosticsSource get source => _source;
+  bool get isNative => _source.isNative;
+
+  bool _active = false;
+  int _tab = 0;
+  bool _disposed = false;
+
+  DiagPermissions? permissions;
+  bool _permissionsAsked = false;
+
+  WifiBand band = WifiBand.ghz24;
+  List<WifiNetwork> networks = const [];
+  DateTime? lastScan;
+  bool scanning = false;
+  String? scanError;
+
+  LinkInfo? link;
+  final List<double> rssiSamples = [];
+  bool walkRunning = true;
+  String? signalError;
+
+  final List<double?> gwSamples = [];
+  final List<double?> dnsSamples = [];
+  int gwSent = 0, gwLost = 0, dnsSent = 0, dnsLost = 0;
+  bool pingRunning = true;
+  String gatewayIp = '192.168.0.1';
+  String? pingError;
+
+  Timer? _scanTimer;
+  Timer? _signalTimer;
+  Timer? _pingTimer;
+  bool _signalBusy = false;
+  bool _pingBusy = false;
+  int _pingTick = 0;
+
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _scanTimer?.cancel();
+    _signalTimer?.cancel();
+    _pingTimer?.cancel();
+    super.dispose();
+  }
+
+  void setActive(bool value) {
+    _active = value;
+    _sync();
+  }
+
+  void setTab(int index) {
+    _tab = index;
+    _sync();
+  }
+
+  void setBand(WifiBand value) {
+    band = value;
+    _notify();
+  }
+
+  void _refreshSource() {
+    if (_source.isNative || !NativeBridge.available) return;
+    _source = NativeBridgeDiagnostics();
+    permissions = null;
+    _permissionsAsked = false;
+    networks = const [];
+    lastScan = null;
+    link = null;
+    rssiSamples.clear();
+    gwSamples.clear();
+    dnsSamples.clear();
+    gwSent = gwLost = dnsSent = dnsLost = 0;
+    gatewayIp = '';
+  }
+
+  void _sync() {
+    _refreshSource();
+    _scanTimer?.cancel();
+    _signalTimer?.cancel();
+    _pingTimer?.cancel();
+    _scanTimer = _signalTimer = _pingTimer = null;
+    if (!_active) return;
+
+    if (_tab == 0) {
+      unawaited(scanNow());
+      _scanTimer = Timer.periodic(const Duration(seconds: 30), (_) => scanNow());
+    } else if (_tab == 1 && walkRunning) {
+      unawaited(_pollSignal());
+      _signalTimer = Timer.periodic(const Duration(seconds: 1), (_) => _pollSignal());
+    } else if (_tab == 2 && pingRunning) {
+      unawaited(_pollPing());
+      _pingTimer = Timer.periodic(const Duration(seconds: 1), (_) => _pollPing());
+    }
+  }
+
+  Future<bool> _ensurePermissions() async {
+    if (!_permissionsAsked) {
+      _permissionsAsked = true;
+      try {
+        permissions = await _source.ensurePermissions();
+      } catch (e) {
+        permissions = const DiagPermissions(granted: false, locationServicesEnabled: true);
+        scanError = 'Não foi possível pedir permissões: $e';
+      }
+      _notify();
+    }
+    return permissions?.granted ?? true;
+  }
+
+  Future<void> requestPermissions() async {
+    _permissionsAsked = false;
+    await _ensurePermissions();
+    _sync();
+  }
+
+  Future<void> scanNow() async {
+    if (scanning) return;
+    scanning = true;
+    scanError = null;
+    _notify();
+    try {
+      if (await _ensurePermissions()) {
+        networks = await _source.scan();
+        lastScan = DateTime.now();
+      } else {
+        scanError = 'Permissão de localização necessária para varrer redes Wi-Fi.';
+      }
+    } catch (e) {
+      scanError = 'Falha na varredura: $e';
+    }
+    scanning = false;
+    _notify();
+  }
+
+  void _push<T>(List<T> list, T value) {
+    list.add(value);
+    if (list.length > kMaxSamples) list.removeAt(0);
+  }
+
+  Future<void> _pollSignal() async {
+    if (_signalBusy) return;
+    _signalBusy = true;
+    try {
+      if (!await _ensurePermissions()) {
+        signalError = 'Permissão de localização necessária para ler o sinal.';
+        return;
+      }
+      final info = await _source.linkInfo();
+      if (info != null && info.connected) {
+        link = info;
+        if (info.gateway.isNotEmpty) gatewayIp = info.gateway;
+        _push(rssiSamples, info.rssi.toDouble());
+        signalError = null;
+      } else {
+        signalError = 'Sem conexão Wi-Fi ativa.';
+      }
+    } catch (e) {
+      signalError = 'Falha ao ler o sinal: $e';
+    } finally {
+      _signalBusy = false;
+      _notify();
+    }
+  }
+
+  Future<void> _pollPing() async {
+    if (_pingBusy) return;
+    _pingBusy = true;
+    try {
+      if (link == null || _pingTick % 5 == 0) {
+        final info = await _source.linkInfo();
+        if (info != null && info.connected) {
+          link = info;
+          if (info.gateway.isNotEmpty) gatewayIp = info.gateway;
+        }
+      }
+      _pingTick++;
+      final hasGateway = gatewayIp.isNotEmpty;
+      final results = await Future.wait<double?>([
+        hasGateway ? _source.ping(gatewayIp) : Future<double?>.value(null),
+        _source.ping(kDnsHost),
+      ]);
+      if (hasGateway) {
+        gwSent++;
+        if (results[0] == null) gwLost++;
+        _push<double?>(gwSamples, results[0]);
+      }
+      dnsSent++;
+      if (results[1] == null) dnsLost++;
+      _push<double?>(dnsSamples, results[1]);
+      pingError = null;
+    } catch (e) {
+      pingError = 'Falha no teste de ping: $e';
+    } finally {
+      _pingBusy = false;
+      _notify();
+    }
+  }
+
+  void toggleWalk() {
+    walkRunning = !walkRunning;
+    _sync();
+    _notify();
+  }
+
+  void resetSignal() {
+    rssiSamples.clear();
+    _notify();
+  }
+
+  void togglePing() {
+    pingRunning = !pingRunning;
+    _sync();
+    _notify();
+  }
+
+  void resetPing() {
+    gwSamples.clear();
+    dnsSamples.clear();
+    gwSent = gwLost = dnsSent = dnsLost = 0;
+    _notify();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Tela do diagnóstico (3 abas)
+// ---------------------------------------------------------------------------
+
+class DiagnosticPage extends StatefulWidget {
+  final DiagnosticsController controller;
+  final bool active;
+  const DiagnosticPage({super.key, required this.controller, required this.active});
+
+  @override
+  State<DiagnosticPage> createState() => _DiagnosticPageState();
+}
+
+class _DiagnosticPageState extends State<DiagnosticPage> with SingleTickerProviderStateMixin {
+  late final TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabs = TabController(length: 3, vsync: this)..addListener(_onTabChanged);
+    Future.microtask(() => widget.controller.setActive(widget.active));
+  }
+
+  void _onTabChanged() {
+    if (!_tabs.indexIsChanging) widget.controller.setTab(_tabs.index);
+  }
+
+  @override
+  void didUpdateWidget(covariant DiagnosticPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active != widget.active) {
+      Future.microtask(() => widget.controller.setActive(widget.active));
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabs.removeListener(_onTabChanged);
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.controller;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.network_check),
+            SizedBox(width: 8),
+            Text('NetFloor Diagnostic'),
+          ],
+        ),
+        bottom: TabBar(
+          controller: _tabs,
+          tabs: const [
+            Tab(icon: Icon(Icons.graphic_eq), text: 'Espectro'),
+            Tab(icon: Icon(Icons.show_chart), text: 'Sinal'),
+            Tab(icon: Icon(Icons.speed), text: 'Latência'),
+          ],
+        ),
+      ),
+      body: AnimatedBuilder(
+        animation: c,
+        builder: (context, _) {
+          return Column(
+            children: [
+              _SourceBanner(native: c.isNative),
+              Expanded(
+                child: TabBarView(
+                  controller: _tabs,
+                  children: [
+                    SpectrumTab(c: c),
+                    SignalTab(c: c),
+                    LatencyTab(c: c),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _SourceBanner extends StatelessWidget {
+  final bool native;
+  const _SourceBanner({required this.native});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = native ? Colors.green.shade50 : Colors.amber.shade100;
+    return Container(
+      width: double.infinity,
+      color: color,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          Icon(native ? Icons.verified_outlined : Icons.science_outlined, size: 18, color: Colors.black87),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              native
+                  ? 'Dados reais do aparelho Android.'
+                  : 'Modo simulação: dados fictícios. Abra o NetFloor no app Android (NetFloor Shell 3.0+) para a varredura real.',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PermissionCard extends StatelessWidget {
+  final DiagnosticsController c;
+  const _PermissionCard({required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    final p = c.permissions;
+    if (!c.isNative || p == null) return const SizedBox.shrink();
+    if (p.granted && p.locationServicesEnabled) return const SizedBox.shrink();
+    final message = !p.granted
+        ? 'O Android exige a permissão de Localização para varrer redes Wi-Fi e ler o sinal.'
+        : 'Ative a Localização (GPS) do aparelho: sem ela o Android não retorna as redes Wi-Fi.';
+    return Card(
+      color: Colors.orange.shade50,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const Icon(Icons.location_off_outlined, color: Colors.deepOrange),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message, style: const TextStyle(fontSize: 13))),
+            const SizedBox(width: 8),
+            FilledButton(onPressed: c.requestPermissions, child: const Text('Conceder')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _two(int v) => v.toString().padLeft(2, '0');
+String _clock(DateTime t) => '${_two(t.hour)}:${_two(t.minute)}:${_two(t.second)}';
+
+// ---------------------------------------------------------------------------
+// Aba 1 — Espectro de canais & saúde do canal
+// ---------------------------------------------------------------------------
+
+const Color kConnectedColor = Color(0xFF00E676);
+const Color kNeighborColor = Color(0xFF94A3B8);
+
+class SpectrumTab extends StatelessWidget {
+  final DiagnosticsController c;
+  const SpectrumTab({super.key, required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    final nets = c.networks.where((n) => n.band == c.band).toList();
+    final health = computeChannelHealth(c.band, c.networks);
+    final best = ([...health]..sort((a, b) => a.score != b.score ? a.score.compareTo(b.score) : a.channel.compareTo(b.channel)))
+        .take(3)
+        .toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _PermissionCard(c: c),
+        SegmentedButton<WifiBand>(
+          segments: const [
+            ButtonSegment(value: WifiBand.ghz24, label: Text('2.4 GHz'), icon: Icon(Icons.wifi)),
+            ButtonSegment(value: WifiBand.ghz5, label: Text('5 GHz'), icon: Icon(Icons.wifi_channel)),
+          ],
+          selected: {c.band},
+          onSelectionChanged: (s) => c.setBand(s.first),
+        ),
+        const SizedBox(height: 10),
+        const Wrap(
+          spacing: 16,
+          runSpacing: 4,
+          children: [
+            _LegendDot(color: kConnectedColor, label: 'Rede conectada'),
+            _LegendDot(color: kNeighborColor, label: 'Redes vizinhas'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 280,
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+          decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(12)),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = c.band == WifiBand.ghz5;
+              final width = wide ? max(constraints.maxWidth, 980.0) : constraints.maxWidth;
+              final chart = CustomPaint(
+                size: Size(width, constraints.maxHeight),
+                painter: SpectrumPainter(band: c.band, networks: nets),
+              );
+              return wide ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: chart) : chart;
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                c.lastScan == null
+                    ? (c.scanning ? 'Varrendo…' : 'Sem varredura ainda')
+                    : 'Última varredura: ${_clock(c.lastScan!)} · ${nets.length} redes em ${c.band == WifiBand.ghz24 ? '2.4' : '5'} GHz',
+                style: const TextStyle(fontSize: 12, color: Colors.black54),
+              ),
+            ),
+            if (c.scanning)
+              const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+            else
+              TextButton.icon(onPressed: c.scanNow, icon: const Icon(Icons.refresh, size: 18), label: const Text('Escanear')),
+          ],
+        ),
+        if (c.scanError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(c.scanError!, style: TextStyle(fontSize: 12, color: Colors.red.shade700)),
+          ),
+        if (c.isNative && c.lastScan != null && c.networks.isEmpty && c.scanError == null)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Text(
+              'Nenhuma rede retornada. Confirme que a Localização (GPS) está ativada; o Android também limita a frequência das varreduras.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          ),
+        _ChannelHealthCard(band: c.band, health: health, best: best),
+      ],
+    );
+  }
+}
+
+class _LegendDot extends StatelessWidget {
+  final Color color;
+  final String label;
+  const _LegendDot({required this.color, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(width: 12, height: 12, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        const SizedBox(width: 6),
+        Text(label, style: const TextStyle(fontSize: 12)),
+      ],
+    );
+  }
+}
+
+class _ChannelHealthCard extends StatelessWidget {
+  final WifiBand band;
+  final List<ChannelHealth> health;
+  final List<ChannelHealth> best;
+  const _ChannelHealthCard({required this.band, required this.health, required this.best});
+
+  @override
+  Widget build(BuildContext context) {
+    const head = TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black54);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Saúde do canal', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const SizedBox(height: 2),
+            const Text(
+              'Interferência estimada por canal de 20 MHz, contando só as redes vizinhas.',
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+            const SizedBox(height: 10),
+            const Text('Recomendados', style: head),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final h in best)
+                  Chip(
+                    visualDensity: VisualDensity.compact,
+                    avatar: CircleAvatar(backgroundColor: h.rating.color, radius: 5),
+                    label: Text('Canal ${h.channel} · ${h.rating.label}', style: const TextStyle(fontSize: 12)),
+                  ),
+              ],
+            ),
+            const Divider(height: 20),
+            const Row(
+              children: [
+                SizedBox(width: 62, child: Text('Canal', style: head)),
+                SizedBox(width: 70, child: Text('Freq.', style: head)),
+                Expanded(child: Text('Interferência', style: head)),
+                SizedBox(width: 44, child: Text('Redes', style: head, textAlign: TextAlign.center)),
+                SizedBox(width: 84, child: Text('Saúde', style: head, textAlign: TextAlign.end)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            for (final h in health)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    SizedBox(width: 62, child: Text('${h.channel}', style: const TextStyle(fontWeight: FontWeight.w600))),
+                    SizedBox(width: 70, child: Text('${h.freq}', style: const TextStyle(fontSize: 12, color: Colors.black54))),
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: (h.score / 2.5).clamp(0.0, 1.0).toDouble(),
+                          minHeight: 8,
+                          color: h.rating.color,
+                          backgroundColor: Colors.grey.shade200,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 44, child: Text('${h.overlapping}', textAlign: TextAlign.center)),
+                    SizedBox(
+                      width: 84,
+                      child: Text(
+                        h.rating.label,
+                        textAlign: TextAlign.end,
+                        style: TextStyle(fontWeight: FontWeight.w600, color: h.rating.color),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Gráfico de espectro: um trapézio por rede (largura = 20/40/80/160 MHz,
+/// altura = intensidade). Conectada em cor acesa; vizinhas em cinza.
+class SpectrumPainter extends CustomPainter {
+  final WifiBand band;
+  final List<WifiNetwork> networks;
+  SpectrumPainter({required this.band, required this.networks});
+
+  static const double _left = 36, _right = 10, _top = 16, _bottom = 30;
+  static const double _minDbm = -100, _maxDbm = -30;
+
+  double get _xMin => band == WifiBand.ghz24 ? 2396 : 5160;
+  double get _xMax => band == WifiBand.ghz24 ? 2498 : 5840;
+
+  double _text(
+    Canvas canvas,
+    String text,
+    Offset pos, {
+    double size = 10,
+    Color color = Colors.white70,
+    FontWeight weight = FontWeight.normal,
+    double maxWidth = double.infinity,
+    bool centerX = false,
+    bool anchorBottom = false,
+    bool rightAlign = false,
+  }) {
+    final tp = TextPainter(
+      text: TextSpan(text: text, style: TextStyle(fontSize: size, color: color, fontWeight: weight)),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '…',
+    )..layout(maxWidth: maxWidth);
+    var dx = pos.dx;
+    if (centerX) dx -= tp.width / 2;
+    if (rightAlign) dx -= tp.width;
+    tp.paint(canvas, Offset(dx, anchorBottom ? pos.dy - tp.height : pos.dy));
+    return tp.width;
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final plot = Rect.fromLTRB(_left, _top, size.width - _right, size.height - _bottom);
+    double xOf(double mhz) => plot.left + (mhz - _xMin) / (_xMax - _xMin) * plot.width;
+    double yOf(double dbm) =>
+        plot.bottom - ((dbm.clamp(_minDbm, _maxDbm) - _minDbm) / (_maxDbm - _minDbm)) * plot.height;
+
+    final grid = Paint()
+      ..color = Colors.white12
+      ..strokeWidth = 1;
+    for (var dbm = -90; dbm <= -40; dbm += 10) {
+      final y = yOf(dbm.toDouble());
+      canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), grid);
+      _text(canvas, '$dbm', Offset(plot.left - 4, y - 6), size: 9, rightAlign: true);
+    }
+    canvas.drawLine(Offset(plot.left, plot.bottom), Offset(plot.right, plot.bottom), Paint()..color = Colors.white38);
+
+    final channels = band == WifiBand.ghz24 ? [for (var c = 1; c <= 14; c++) c] : kChannels5Ghz;
+    for (final ch in channels) {
+      final x = xOf(channelToMhz(band, ch).toDouble());
+      canvas.drawLine(Offset(x, plot.bottom), Offset(x, plot.bottom + 4), Paint()..color = Colors.white38);
+      _text(canvas, '$ch', Offset(x, plot.bottom + 6), size: 9, centerX: true);
+    }
+    _text(canvas, 'Canal', Offset(plot.center.dx, size.height - 2), size: 9, color: Colors.white54, centerX: true, anchorBottom: true);
+
+    canvas.save();
+    canvas.clipRect(plot.inflate(2));
+
+    Path trapezoid(WifiNetwork n) {
+      final half = n.widthMhz / 2;
+      final inset = n.widthMhz * 0.10;
+      final yTop = yOf(n.level.toDouble());
+      return Path()
+        ..moveTo(xOf(n.centerFreq - half), plot.bottom)
+        ..lineTo(xOf(n.centerFreq - half + inset), yTop)
+        ..lineTo(xOf(n.centerFreq + half - inset), yTop)
+        ..lineTo(xOf(n.centerFreq + half), plot.bottom)
+        ..close();
+    }
+
+    final neighbors = networks.where((n) => !n.connected).toList()..sort((a, b) => a.level.compareTo(b.level));
+    final connected = networks.where((n) => n.connected).toList();
+
+    for (final n in neighbors) {
+      final path = trapezoid(n);
+      canvas.drawPath(path, Paint()..color = kNeighborColor.withOpacity(0.16));
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = kNeighborColor.withOpacity(0.75)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.2,
+      );
+    }
+    for (final n in connected) {
+      final path = trapezoid(n);
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = kConnectedColor.withOpacity(0.55)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 7
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
+      );
+      canvas.drawPath(path, Paint()..color = kConnectedColor.withOpacity(0.38));
+      canvas.drawPath(
+        path,
+        Paint()
+          ..color = kConnectedColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.5,
+      );
+    }
+
+    // Rótulos: rede conectada + as 4 vizinhas mais fortes.
+    final strongest = ([...neighbors]..sort((a, b) => b.level.compareTo(a.level))).take(4);
+    for (final n in strongest) {
+      _text(canvas, n.displayName, Offset(xOf(n.centerFreq.toDouble()), yOf(n.level.toDouble()) - 2),
+          size: 9, color: Colors.white70, centerX: true, anchorBottom: true, maxWidth: 90);
+    }
+    for (final n in connected) {
+      _text(canvas, '${n.displayName} (${n.level} dBm)', Offset(xOf(n.centerFreq.toDouble()), yOf(n.level.toDouble()) - 2),
+          size: 11, color: kConnectedColor, weight: FontWeight.bold, centerX: true, anchorBottom: true, maxWidth: 150);
+    }
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant SpectrumPainter oldDelegate) => true;
+}
+
+// ---------------------------------------------------------------------------
+// Aba 2 — Monitoramento contínuo de sinal (walk-through)
+// ---------------------------------------------------------------------------
+
+({String label, Color color}) signalQuality(double dbm) {
+  if (dbm >= -50) return (label: 'Excelente', color: const Color(0xFF16A34A));
+  if (dbm >= -60) return (label: 'Muito bom', color: const Color(0xFF65A30D));
+  if (dbm >= -70) return (label: 'Bom', color: const Color(0xFFD97706));
+  if (dbm >= -80) return (label: 'Fraco', color: const Color(0xFFEA580C));
+  return (label: 'Muito fraco', color: const Color(0xFFDC2626));
+}
+
+class SignalTab extends StatelessWidget {
+  final DiagnosticsController c;
+  const SignalTab({super.key, required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = c.rssiSamples;
+    final last = s.isEmpty ? null : s.last;
+    final q = last == null ? null : signalQuality(last);
+    final link = c.link;
+    final minV = s.isEmpty ? null : s.reduce(min);
+    final maxV = s.isEmpty ? null : s.reduce(max);
+    final avg = s.isEmpty ? null : s.reduce((a, b) => a + b) / s.length;
+
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        _PermissionCard(c: c),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        last == null ? '-- dBm' : '${last.round()} dBm',
+                        style: TextStyle(fontSize: 40, fontWeight: FontWeight.bold, color: q?.color),
+                      ),
+                      Text(
+                        link == null
+                            ? 'Aguardando leitura…'
+                            : '${link.ssid.isEmpty ? '(rede)' : link.ssid} · ${link.bandLabel} · canal ${link.channel}',
+                        style: const TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                    ],
+                  ),
+                ),
+                if (q != null)
+                  Chip(
+                    label: Text(q.label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                    backgroundColor: q.color,
+                    side: BorderSide.none,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+            child: SizedBox(
+              height: 240,
+              child: s.isEmpty
+                  ? const Center(child: Text('Sem amostras ainda', style: TextStyle(color: Colors.black54)))
+                  : LineChart(_rssiChart(s, q!.color), duration: Duration.zero),
+            ),
+          ),
+        ),
+        Row(
+          children: [
+            Expanded(child: _MiniStat(label: 'Mínimo', value: minV == null ? '--' : '${minV.round()} dBm')),
+            const SizedBox(width: 8),
+            Expanded(child: _MiniStat(label: 'Média', value: avg == null ? '--' : '${avg.round()} dBm')),
+            const SizedBox(width: 8),
+            Expanded(child: _MiniStat(label: 'Máximo', value: maxV == null ? '--' : '${maxV.round()} dBm')),
+          ],
+        ),
+        if (c.signalError != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(c.signalError!, style: TextStyle(fontSize: 12, color: Colors.red.shade700)),
+          ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: c.toggleWalk,
+                icon: Icon(c.walkRunning ? Icons.pause : Icons.play_arrow),
+                label: Text(c.walkRunning ? 'Pausar' : 'Retomar'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(onPressed: c.resetSignal, icon: const Icon(Icons.delete_outline), label: const Text('Limpar')),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Caminhe pelo ambiente com o celular: as quedas no gráfico mostram onde o sinal enfraquece.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _MiniStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+            const SizedBox(height: 2),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+LineChartData _rssiChart(List<double> samples, Color color) {
+  final spots = <FlSpot>[
+    for (var i = 0; i < samples.length; i++) FlSpot((kMaxSamples - samples.length + i).toDouble(), samples[i]),
+  ];
+  const noTitles = AxisTitles(sideTitles: SideTitles(showTitles: false));
+  return LineChartData(
+    minX: 0,
+    maxX: (kMaxSamples - 1).toDouble(),
+    minY: -100,
+    maxY: -20,
+    clipData: const FlClipData.all(),
+    gridData: const FlGridData(show: true, drawVerticalLine: false, horizontalInterval: 10),
+    borderData: FlBorderData(show: false),
+    lineTouchData: const LineTouchData(enabled: false),
+    titlesData: FlTitlesData(
+      topTitles: noTitles,
+      rightTitles: noTitles,
+      bottomTitles: noTitles,
+      leftTitles: AxisTitles(
+        sideTitles: SideTitles(
+          showTitles: true,
+          reservedSize: 38,
+          interval: 20,
+          getTitlesWidget: (v, meta) => Text('${v.toInt()}', style: const TextStyle(fontSize: 10)),
+        ),
+      ),
+    ),
+    extraLinesData: ExtraLinesData(
+      horizontalLines: [
+        HorizontalLine(y: -60, color: Colors.green.withOpacity(0.6), strokeWidth: 1, dashArray: [6, 4]),
+        HorizontalLine(y: -70, color: Colors.orange.withOpacity(0.7), strokeWidth: 1, dashArray: [6, 4]),
+      ],
+    ),
+    lineBarsData: [
+      LineChartBarData(
+        spots: spots,
+        isCurved: true,
+        curveSmoothness: 0.2,
+        color: color,
+        barWidth: 3,
+        dotData: const FlDotData(show: false),
+        belowBarData: BarAreaData(show: true, color: color.withOpacity(0.15)),
+      ),
+    ],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Aba 3 — Latência & rede (double-ping: gateway vs DNS da Internet)
+// ---------------------------------------------------------------------------
+
+class LatencyTab extends StatelessWidget {
+  final DiagnosticsController c;
+  const LatencyTab({super.key, required this.c});
+
+  static const Color _gwColor = Color(0xFF0D9488);
+  static const Color _dnsColor = Color(0xFFEA580C);
+
+  double? _last(List<double?> s) {
+    for (var i = s.length - 1; i >= 0; i--) {
+      if (s[i] != null) return s[i];
+    }
+    return null;
+  }
+
+  double? _avg(List<double?> s) {
+    final v = s.whereType<double>().toList();
+    return v.isEmpty ? null : v.reduce((a, b) => a + b) / v.length;
+  }
+
+  String _ms(double? v) => v == null ? '--' : '${v.toStringAsFixed(v < 10 ? 1 : 0)} ms';
+  String _loss(int lost, int sent) => sent == 0 ? '--' : '${(lost * 100 / sent).toStringAsFixed(lost == 0 ? 0 : 1)}%';
+
+  @override
+  Widget build(BuildContext context) {
+    final gwLast = _last(c.gwSamples);
+    final dnsLast = _last(c.dnsSamples);
+    final phy = c.link?.linkSpeedMbps;
+
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final w = (constraints.maxWidth - 8) / 2;
+            return Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _StatTile(
+                  width: w,
+                  icon: Icons.report_gmailerrorred_outlined,
+                  title: 'Perda de pacotes',
+                  value: 'DNS ${_loss(c.dnsLost, c.dnsSent)}',
+                  subtitle: c.gatewayIp.isEmpty ? 'Gateway indisponível' : 'Gateway ${_loss(c.gwLost, c.gwSent)}',
+                  color: LatencyTab._dnsColor,
+                ),
+                _StatTile(
+                  width: w,
+                  icon: Icons.dns_outlined,
+                  title: 'Latência DNS ($kDnsHost)',
+                  value: _ms(dnsLast),
+                  subtitle: 'Média ${_ms(_avg(c.dnsSamples))}',
+                  color: LatencyTab._dnsColor,
+                ),
+                _StatTile(
+                  width: w,
+                  icon: Icons.router_outlined,
+                  title: 'Latência Gateway',
+                  value: _ms(gwLast),
+                  subtitle: c.gatewayIp.isEmpty ? 'IP não detectado' : '${c.gatewayIp} · média ${_ms(_avg(c.gwSamples))}',
+                  color: LatencyTab._gwColor,
+                ),
+                _StatTile(
+                  width: w,
+                  icon: Icons.speed,
+                  title: 'Velocidade PHY',
+                  value: phy == null || phy == 0 ? '-- Mbps' : '$phy Mbps',
+                  subtitle: 'Taxa negociada com o roteador',
+                  color: Colors.indigo,
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 16, 8),
+            child: Column(
+              children: [
+                const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _LegendDot(color: _gwColor, label: 'Gateway (roteador)'),
+                    SizedBox(width: 16),
+                    _LegendDot(color: _dnsColor, label: 'DNS Internet'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 220,
+                  child: c.gwSamples.isEmpty && c.dnsSamples.isEmpty
+                      ? const Center(child: Text('Sem amostras ainda', style: TextStyle(color: Colors.black54)))
+                      : LineChart(_latencyChart(c.gwSamples, c.dnsSamples), duration: Duration.zero),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (c.pingError != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(c.pingError!, style: TextStyle(fontSize: 12, color: Colors.red.shade700)),
+          ),
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: c.togglePing,
+                icon: Icon(c.pingRunning ? Icons.pause : Icons.play_arrow),
+                label: Text(c.pingRunning ? 'Pausar' : 'Retomar'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            OutlinedButton.icon(onPressed: c.resetPing, icon: const Icon(Icons.delete_outline), label: const Text('Zerar')),
+          ],
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Compara a latência até o roteador (rede local) com a do DNS público: se só o DNS piora, o problema está fora de casa.',
+          style: TextStyle(fontSize: 12, color: Colors.black54),
+        ),
+      ],
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  final double width;
+  final IconData icon;
+  final String title;
+  final String value;
+  final String subtitle;
+  final Color color;
+  const _StatTile({
+    required this.width,
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.subtitle,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 16, color: color),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(title, style: const TextStyle(fontSize: 11, color: Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(value, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color)),
+              const SizedBox(height: 2),
+              Text(subtitle, style: const TextStyle(fontSize: 11, color: Colors.black54), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+LineChartData _latencyChart(List<double?> gw, List<double?> dns) {
+  List<FlSpot> spots(List<double?> s) => [
+        for (var i = 0; i < s.length; i++)
+          s[i] == null ? FlSpot.nullSpot : FlSpot((kMaxSamples - s.length + i).toDouble(), s[i]!),
+      ];
+  final values = [...gw, ...dns].whereType<double>();
+  final peak = values.isEmpty ? 40.0 : values.reduce(max);
+  final maxY = max(40.0, (peak * 1.25 / 10).ceil() * 10.0);
+  const noTitles = AxisTitles(sideTitles: SideTitles(showTitles: false));
+
+  LineChartBarData bar(List<double?> s, Color color) => LineChartBarData(
+        spots: spots(s),
+        isCurved: false,
+        color: color,
+        barWidth: 2.5,
+        dotData: const FlDotData(show: false),
+      );
+
+  return LineChartData(
+    minX: 0,
+    maxX: (kMaxSamples - 1).toDouble(),
+    minY: 0,
+    maxY: maxY,
+    clipData: const FlClipData.all(),
+    gridData: const FlGridData(show: true, drawVerticalLine: false),
+    borderData: FlBorderData(show: false),
+    lineTouchData: const LineTouchData(enabled: false),
+    titlesData: FlTitlesData(
+      topTitles: noTitles,
+      rightTitles: noTitles,
+      bottomTitles: noTitles,
+      leftTitles: AxisTitles(
+        sideTitles: SideTitles(
+          showTitles: true,
+          reservedSize: 34,
+          getTitlesWidget: (v, meta) => Text('${v.toInt()}', style: const TextStyle(fontSize: 10)),
+        ),
+      ),
+    ),
+    lineBarsData: [
+      if (gw.isNotEmpty) bar(gw, LatencyTab._gwColor),
+      if (dns.isNotEmpty) bar(dns, LatencyTab._dnsColor),
+    ],
+  );
 }
