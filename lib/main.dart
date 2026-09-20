@@ -11,7 +11,7 @@
 //   flutter:
 //     uses-material-design: true
 //     assets:
-//       - assets/floorplans/  # casa_2q.png, sobrado_1andar.png (+ sobrado_terreo.png e edificio_corporativo.png quando existirem)
+//       - assets/floorplans/  # casa_2q.png (+ planta_01..03.png e edificio_corporativo.png quando existirem)
 //
 // Este arquivo compila para Flutter Web/PWA (usa dart:js_interop). Os recursos
 // nativos do Android (varredura Wi-Fi, RSSI, ping) chegam pela ponte JS
@@ -233,47 +233,85 @@ const FloorPlanDef kPlanCasa2q = FloorPlanDef(
   ],
 );
 
-// Térreo do sobrado: sem imagem ainda (assets/floorplans/sobrado_terreo.png).
-// Enquanto o PNG não existir, o app desenha esta versão vetorial.
-const FloorPlanDef kPlanSobradoTerreo = FloorPlanDef(
-  id: 'sobrado_terreo',
-  name: 'Sobrado — Térreo',
-  subtitle: 'Garagem · Salas · Cozinha · Varanda',
-  assetPath: 'assets/floorplans/sobrado_terreo.png',
-  aspectRatio: 940 / 1496,
+// Plantas 01-03: espaço reservado para o lote de imagens limpas (sem marca
+// d'água) da biblioteca: assets/floorplans/planta_01.png ... planta_03.png.
+// Enquanto os PNGs não existirem, o app mostra estes desenhos provisórios.
+const FloorPlanDef kPlanta01 = FloorPlanDef(
+  id: 'planta_01',
+  name: 'Planta 01 — Apartamento 3 Quartos',
+  subtitle: 'Desenho provisório · aguardando planta_01.png',
+  assetPath: 'assets/floorplans/planta_01.png',
+  aspectRatio: 1.5,
   rooms: [
-    RoomDef('Varanda', Rect.fromLTWH(0.00, 0.00, 1.00, 0.16)),
-    RoomDef('Sala de Jantar', Rect.fromLTWH(0.00, 0.16, 0.50, 0.28)),
-    RoomDef('Cozinha', Rect.fromLTWH(0.50, 0.16, 0.50, 0.28)),
-    RoomDef('Sala de TV', Rect.fromLTWH(0.00, 0.44, 0.48, 0.32)),
-    RoomDef('Lavabo', Rect.fromLTWH(0.48, 0.44, 0.20, 0.14)),
-    RoomDef('Despensa', Rect.fromLTWH(0.68, 0.44, 0.32, 0.14)),
-    RoomDef('Garagem', Rect.fromLTWH(0.48, 0.58, 0.52, 0.42)),
-    RoomDef('Hall', Rect.fromLTWH(0.00, 0.76, 0.48, 0.24)),
+    RoomDef('Cozinha', Rect.fromLTWH(0.00, 0.00, 0.32, 0.34)),
+    RoomDef('Banheiro', Rect.fromLTWH(0.32, 0.00, 0.16, 0.34)),
+    RoomDef('Lavanderia', Rect.fromLTWH(0.48, 0.00, 0.14, 0.34)),
+    RoomDef('Quarto 3', Rect.fromLTWH(0.62, 0.00, 0.38, 0.34)),
+    RoomDef('Sala de Estar', Rect.fromLTWH(0.00, 0.34, 0.38, 0.46)),
+    RoomDef('Varanda', Rect.fromLTWH(0.00, 0.80, 0.38, 0.20)),
+    RoomDef('Quarto 1', Rect.fromLTWH(0.38, 0.34, 0.31, 0.66)),
+    RoomDef('Quarto 2', Rect.fromLTWH(0.69, 0.34, 0.31, 0.66)),
   ],
   wallSegments: [
-    WallSegment(Offset(0.00, 0.16), Offset(1.00, 0.16)),
-    WallSegment(Offset(0.48, 0.44), Offset(0.48, 1.00)),
-    WallSegment(Offset(0.48, 0.58), Offset(1.00, 0.58)),
-    WallSegment(Offset(0.68, 0.44), Offset(0.68, 0.58)),
-    WallSegment(Offset(0.00, 0.76), Offset(0.48, 0.76)),
+    WallSegment(Offset(0.00, 0.34), Offset(1.00, 0.34)),
+    WallSegment(Offset(0.32, 0.00), Offset(0.32, 0.34)),
+    WallSegment(Offset(0.48, 0.00), Offset(0.48, 0.34)),
+    WallSegment(Offset(0.62, 0.00), Offset(0.62, 0.34)),
+    WallSegment(Offset(0.38, 0.34), Offset(0.38, 1.00)),
+    WallSegment(Offset(0.69, 0.34), Offset(0.69, 1.00)),
+    WallSegment(Offset(0.00, 0.80), Offset(0.38, 0.80), attenuationDb: 3.5),
   ],
 );
 
-const FloorPlanDef kPlanSobrado1Andar = FloorPlanDef(
-  id: 'sobrado_1andar',
-  name: 'Sobrado — 1º Andar',
-  subtitle: 'Área íntima · 3 Quartos · Banheiro',
-  imageUrl: '$kGitHubRawBase/sobrado_1andar.png',
-  assetPath: 'assets/floorplans/sobrado_1andar.png',
-  aspectRatio: 940 / 1496,
-  // Imagem em perspectiva 3D: as paredes abaixo são só uma aproximação.
+const FloorPlanDef kPlanta02 = FloorPlanDef(
+  id: 'planta_02',
+  name: 'Planta 02 — Apartamento Open Space',
+  subtitle: 'Desenho provisório · aguardando planta_02.png',
+  assetPath: 'assets/floorplans/planta_02.png',
+  aspectRatio: 1.5,
+  rooms: [
+    RoomDef('Sala de Estar', Rect.fromLTWH(0.00, 0.00, 0.46, 0.58)),
+    RoomDef('Cozinha', Rect.fromLTWH(0.00, 0.58, 0.46, 0.42)),
+    RoomDef('Quarto 1', Rect.fromLTWH(0.46, 0.00, 0.27, 0.34)),
+    RoomDef('Suíte', Rect.fromLTWH(0.73, 0.00, 0.27, 0.34)),
+    RoomDef('Banheiro', Rect.fromLTWH(0.46, 0.34, 0.20, 0.26)),
+    RoomDef('Banheiro', Rect.fromLTWH(0.66, 0.34, 0.20, 0.26)),
+    RoomDef('Quarto 3', Rect.fromLTWH(0.46, 0.60, 0.40, 0.40)),
+    RoomDef('Varanda', Rect.fromLTWH(0.86, 0.34, 0.14, 0.66)),
+  ],
   wallSegments: [
-    WallSegment(Offset(0.595, 0.23), Offset(0.595, 0.555)),
-    WallSegment(Offset(0.60, 0.39), Offset(0.95, 0.39)),
-    WallSegment(Offset(0.60, 0.555), Offset(0.95, 0.555)),
-    WallSegment(Offset(0.52, 0.555), Offset(0.52, 0.70)),
-    WallSegment(Offset(0.44, 0.23), Offset(0.44, 0.41)),
+    WallSegment(Offset(0.46, 0.00), Offset(0.46, 1.00)),
+    WallSegment(Offset(0.46, 0.34), Offset(1.00, 0.34)),
+    WallSegment(Offset(0.73, 0.00), Offset(0.73, 0.34)),
+    WallSegment(Offset(0.46, 0.60), Offset(0.86, 0.60)),
+    WallSegment(Offset(0.66, 0.34), Offset(0.66, 0.60)),
+    WallSegment(Offset(0.86, 0.34), Offset(0.86, 1.00), attenuationDb: 3.5),
+  ],
+);
+
+const FloorPlanDef kPlanta03 = FloorPlanDef(
+  id: 'planta_03',
+  name: 'Planta 03 — Apartamento com Terraço',
+  subtitle: 'Desenho provisório · aguardando planta_03.png',
+  assetPath: 'assets/floorplans/planta_03.png',
+  aspectRatio: 1.0,
+  rooms: [
+    RoomDef('Varanda', Rect.fromLTWH(0.00, 0.00, 1.00, 0.22)),
+    RoomDef('Quarto 1', Rect.fromLTWH(0.00, 0.22, 0.30, 0.40)),
+    RoomDef('Sala de Estar', Rect.fromLTWH(0.30, 0.22, 0.40, 0.54)),
+    RoomDef('Quarto 2', Rect.fromLTWH(0.70, 0.22, 0.30, 0.40)),
+    RoomDef('Banheiro', Rect.fromLTWH(0.00, 0.62, 0.30, 0.14)),
+    RoomDef('Banheiro', Rect.fromLTWH(0.70, 0.62, 0.30, 0.14)),
+    RoomDef('Quarto 3', Rect.fromLTWH(0.00, 0.76, 0.30, 0.24)),
+    RoomDef('Cozinha', Rect.fromLTWH(0.30, 0.76, 0.70, 0.24)),
+  ],
+  wallSegments: [
+    WallSegment(Offset(0.00, 0.22), Offset(1.00, 0.22), attenuationDb: 3.5),
+    WallSegment(Offset(0.30, 0.22), Offset(0.30, 1.00)),
+    WallSegment(Offset(0.70, 0.22), Offset(0.70, 0.76)),
+    WallSegment(Offset(0.00, 0.62), Offset(0.30, 0.62)),
+    WallSegment(Offset(0.70, 0.62), Offset(1.00, 0.62)),
+    WallSegment(Offset(0.00, 0.76), Offset(1.00, 0.76)),
   ],
 );
 
@@ -305,10 +343,22 @@ const List<ProjectDef> kProjectLibrary = [
     floors: [FloorDef('Térreo', kPlanCasa2q)],
   ),
   ProjectDef(
-    id: 'sobrado',
-    name: 'Sobrado (2 pavimentos)',
-    subtitle: 'Térreo: garagem e salas · 1º Andar: área íntima',
-    floors: [FloorDef('Térreo', kPlanSobradoTerreo), FloorDef('1º Andar', kPlanSobrado1Andar)],
+    id: 'planta_01',
+    name: 'Planta 01 — Apartamento 3 Quartos',
+    subtitle: '1 pavimento · desenho provisório (aguardando planta_01.png)',
+    floors: [FloorDef('Térreo', kPlanta01)],
+  ),
+  ProjectDef(
+    id: 'planta_02',
+    name: 'Planta 02 — Apartamento Open Space',
+    subtitle: '1 pavimento · desenho provisório (aguardando planta_02.png)',
+    floors: [FloorDef('Térreo', kPlanta02)],
+  ),
+  ProjectDef(
+    id: 'planta_03',
+    name: 'Planta 03 — Apartamento com Terraço',
+    subtitle: '1 pavimento · desenho provisório (aguardando planta_03.png)',
+    floors: [FloorDef('Térreo', kPlanta03)],
   ),
   ProjectDef(
     id: 'edificio',
@@ -509,7 +559,7 @@ class FloorPlanPainter extends CustomPainter {
 
   bool _isWetArea(String label) {
     final l = label.toLowerCase();
-    return l.contains('banheiro') || l.contains('lavabo') || l.contains('cozinha') || l.contains('copa');
+    return l.contains('banheiro') || l.contains('lavabo') || l.contains('lavanderia') || l.contains('cozinha') || l.contains('copa');
   }
 
   void _drawFloor(Canvas canvas, Rect r, String label) {
