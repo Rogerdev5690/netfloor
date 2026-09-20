@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 440" font-family="Segoe UI, Arial, sans-serif" font-size="12.5">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#334155"/></marker>
+  </defs>
+  <rect width="900" height="440" fill="#ffffff"/>
+
+  <!-- colunas -->
+  <g font-weight="700" text-anchor="middle" font-size="13">
+    <rect x="30" y="16" width="180" height="40" rx="8" fill="#e0e7ff" stroke="#6366f1"/><text x="120" y="41">App Web (Dart)</text>
+    <rect x="250" y="16" width="180" height="40" rx="8" fill="#f1f5f9" stroke="#94a3b8"/><text x="340" y="41">WebView / JavaScript</text>
+    <rect x="470" y="16" width="200" height="40" rx="8" fill="#fff7ed" stroke="#f97316"/><text x="570" y="41">Shell (Dart)</text>
+    <rect x="710" y="16" width="170" height="40" rx="8" fill="#ecfdf5" stroke="#10b981"/><text x="795" y="41">Kotlin (Android)</text>
+  </g>
+  <g stroke="#cbd5e1" stroke-dasharray="4 4">
+    <line x1="120" y1="56" x2="120" y2="430"/><line x1="340" y1="56" x2="340" y2="430"/>
+    <line x1="570" y1="56" x2="570" y2="430"/><line x1="795" y1="56" x2="795" y2="430"/>
+  </g>
+
+  <g stroke="#334155" stroke-width="2" marker-end="url(#a)">
+    <line x1="120" y1="100" x2="338" y2="100"/>
+    <line x1="340" y1="150" x2="568" y2="150"/>
+    <line x1="570" y1="200" x2="793" y2="200"/>
+    <line x1="793" y1="250" x2="572" y2="250"/>
+    <line x1="570" y1="300" x2="342" y2="300"/>
+    <line x1="340" y1="350" x2="122" y2="350"/>
+  </g>
+  <g font-size="12" fill="#0f172a">
+    <text x="130" y="90">1. NetFloorNative.postMessage(JSON)</text>
+    <text x="350" y="140">2. onMessageReceived(msg)</text>
+    <text x="580" y="190">3. MethodChannel.invokeMethod</text>
+    <text x="588" y="240">4. resultado (string JSON)</text>
+    <text x="350" y="290">5. runJavaScript(__netfloorNativeResponse)</text>
+    <text x="130" y="340">6. Completer.complete(resposta)</text>
+  </g>
+  <g font-size="11.5" fill="#475569">
+    <text x="130" y="118">{"id":7,"method":"scan","args":{}}</text>
+    <text x="588" y="218">scan / linkInfo / ping</text>
+    <text x="130" y="368">{"id":7,"ok":true,"data":{...}}</text>
+    <text x="30" y="416" font-style="italic">O "id" liga cada resposta ao pedido (Map&lt;int, Completer&gt;); timeout por chamada (12 s padrão).</text>
+  </g>
+</svg>

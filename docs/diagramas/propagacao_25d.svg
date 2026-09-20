@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" font-family="Segoe UI, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="a" markerWidth="10" markerHeight="8" refX="9" refY="4" orient="auto"><path d="M0,0 L10,4 L0,8 z" fill="#b91c1c"/></marker>
+  </defs>
+  <rect width="900" height="420" fill="#ffffff"/>
+
+  <!-- 1º andar -->
+  <text x="20" y="58" font-weight="700" fill="#0f172a">1º Andar (pavimento exibido)</text>
+  <rect x="120" y="70" width="700" height="14" fill="#94a3b8"/>
+  <rect x="120" y="70" width="10" height="110" fill="#475569"/>
+  <rect x="810" y="70" width="10" height="110" fill="#475569"/>
+  <rect x="470" y="70" width="8" height="110" fill="#475569"/>
+  <text x="490" y="128" fill="#475569" font-size="12">parede: −3,5 a −10 dB</text>
+
+  <!-- laje -->
+  <rect x="120" y="180" width="700" height="18" fill="#64748b"/>
+  <text x="830" y="194" fill="#334155" font-size="12">laje: −15 dB</text>
+
+  <!-- térreo -->
+  <text x="20" y="260" font-weight="700" fill="#0f172a">Térreo (roteador)</text>
+  <rect x="120" y="198" width="10" height="110" fill="#475569"/>
+  <rect x="810" y="198" width="10" height="110" fill="#475569"/>
+  <rect x="120" y="308" width="700" height="14" fill="#94a3b8"/>
+
+  <!-- roteador e ponto -->
+  <circle cx="240" cy="290" r="11" fill="#1e293b"/>
+  <text x="258" y="286" font-weight="700">Roteador (Ptx)</text>
+  <circle cx="640" cy="66" r="9" fill="#16a34a"/>
+  <text x="654" y="62" font-weight="700" fill="#166534">ponto (x,y) sendo avaliado</text>
+
+  <!-- distâncias -->
+  <line x1="240" y1="290" x2="636" y2="70" stroke="#b91c1c" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="380" y="150" fill="#b91c1c" font-weight="700" transform="rotate(-29 380 150)">d3D</text>
+  <line x1="240" y1="340" x2="640" y2="340" stroke="#334155" stroke-width="1.5"/>
+  <text x="440" y="358" text-anchor="middle" fill="#334155">Δx, Δy (plano)</text>
+  <line x1="680" y1="66" x2="680" y2="290" stroke="#334155" stroke-width="1.5"/>
+  <text x="692" y="190" fill="#334155">Δz = Δandares · 3 m</text>
+
+  <text x="20" y="400" fill="#0f172a" font-weight="700">Sinal = Ptx − 22·log₁₀(d3D) − Σ paredes cruzadas − 15 dB × Δandares</text>
+</svg>
