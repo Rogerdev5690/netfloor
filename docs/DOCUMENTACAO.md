@@ -1,6 +1,6 @@
-<!-- doc-version: 8.0 -->
-<!-- doc-revision: 8.0.0 -->
-<!-- doc-date: 21/09/2026 -->
+<!-- doc-version: 8.1 -->
+<!-- doc-revision: 8.1.0 -->
+<!-- doc-date: 25/09/2026 -->
 
 ## 1. Visão Geral e Proposta do Produto
 
@@ -86,7 +86,7 @@ Estrutura local (`C:\Users\Roger\Desktop\Nova pasta\`):
 
 ```text
 netfloor/                      # app web (Flutter)
-  lib/main.dart                # todo o código do app (arquivo único, ~6.560 linhas)
+  lib/main.dart                # todo o código do app (arquivo único, ~6.730 linhas)
   assets/floorplans/           # imagens das plantas
   assets/fonts/                # Roboto (Regular, Bold, Italic) usada no PDF
   pubspec.yaml
@@ -205,8 +205,11 @@ Em 2.4 GHz a expressão se reduz à fórmula original do projeto, $P_{tx} - 22\l
 | Huawei AX3 Pro / AX3s | 18 dBm | Roteador de mesa, corpo escuro, 4 antenas externas, LED verde |
 | TP-Link Deco (Mesh) | 23 dBm | Torre/cilindro branco minimalista, sem antenas |
 | Ubiquiti UniFi (AP Pro) | 28 dBm | Disco de teto circular com anel de luz azul central |
+| ZTE E2320 / E2620 (ZXHN, Wi-Fi 6) | 20 dBm | ONT/roteador branco de mesa, duas antenas externas inclinadas, faixa de LEDs |
 
 A escolha do modelo é feita por uma `BottomSheet` ao tocar em **Adicionar Roteador**; o modelo selecionado também é o padrão para roteadores inseridos por toque na planta.
+
+O ZTE E2320 foi cadastrado com potência (20 dBm) **acima do Huawei AX3** (18 dBm), refletindo o maior ganho/EIRP típico de um CPE Wi-Fi 6 com beamforming — na simulação, cobertura e alcance maiores que o Huawei nas mesmas condições de parede e distância.
 
 ### 3.3 Distância 3D e escala
 
@@ -628,9 +631,11 @@ Isso permite deixar a **vaga** de uma planta reservada: enquanto o PNG não exis
 | Projeto | Pavimentos | Fonte visual | Situação |
 |---|---|---|---|
 | Casa Térrea 2 Quartos (`casa_2q`) | 1 | `casa_2q.png` (736×1105 px) | Imagem limpa, com paredes aproximadas |
+| Casa 2 Pavimentos (Referência) | 2 | Desenho vetorial próprio | Modelo de referência para casas de dois andares (corte esquemático: sala/escada/sala de TV no térreo, sala com varanda/quarto no 1º andar) — permanentemente vetorial, sem foto associada |
 | Planta 01 — Apartamento 3 Quartos | 1 | `planta_01.png` (aguardando) | Desenho vetorial provisório |
 | Planta 02 — Apartamento Open Space | 1 | `planta_02.png` (aguardando) | Desenho vetorial provisório |
 | Planta 03 — Apartamento com Terraço | 1 | `planta_03.png` (aguardando) | Desenho vetorial provisório |
+| Planta 04 — Apartamento 3 Suítes | 1 | `planta_04.png` (aguardando) | Desenho vetorial provisório (cozinha, sala de jantar, sala de estar, 3 suítes) |
 | Edifício Corporativo | 3 | `edificio_corporativo.png` (aguardando) | Planta vetorial repetida nos 3 andares (Open Space, Reunião, Diretoria, Copa) |
 
 ### 6.4 Como adicionar uma nova planta
@@ -657,6 +662,7 @@ O botão **Carregar plantas do dispositivo** (biblioteca) e o chip **+ Pavimento
 - Somente imagens **limpas**, próprias ou licenciadas, devem entrar na biblioteca.
 - Imagens com marca d'água de terceiros (por exemplo, prévias de bancos de imagens pagos ou de sites de projetos) **não** são incluídas nem têm a marca removida.
 - Vagas de plantas cujo arquivo ainda não foi fornecido usam desenho vetorial próprio.
+- Quando o usuário envia uma imagem de referência (ex.: um render de terceiros) para pedir uma planta "no estilo" dela, o app **não reproduz a imagem**: um novo `FloorPlanDef` vetorial é desenhado do zero, inspirado apenas na disposição geral dos cômodos (como "Casa 2 Pavimentos" e "Planta 04", v8.1).
 
 ### 6.7 Histórico de alterações
 
@@ -672,6 +678,7 @@ O botão **Carregar plantas do dispositivo** (biblioteca) e o chip **+ Pavimento
 | 7.0 | 19/09/2026 | **Projetos com vários pavimentos (2.5D)**, distância 3D e perda de laje de 15 dB; posições dos roteadores em frações; upload em lote; novas plantas limpas; cartão "Rede conectada"; Shell 3.1.0 |
 | 7.0.1 | 19/09/2026 | **Limpeza da biblioteca:** remoção do projeto Sobrado (térreo e 1º andar) e do arquivo `sobrado_1andar.png`; vagas `planta_01..03` com desenho provisório |
 | 8.0 | 21/09/2026 | **NetFloor Enterprise:** laudo de vistoria em PDF com logo, mapas por banda, tabelas previsto × medido e **assinatura digital**; `InteractiveViewer` (zoom/pan); **calibração de escala por régua** (o cálculo passa a ser em metros reais); **materiais de parede** e ferramenta de desenho; **2.4 / 5 / 6 GHz**; pontos e **medição de campo** (RSSI, PHY, ping duplo, perda); modos **Apresentação** e **Diagnóstico**; **persistência offline** (IndexedDB) e exportar/importar `.json`; Shell 3.2.0 (`saveFile`, compartilhamento, seletor `.json`); a constante `kPixelsPerMeter` deixa de existir |
+| 8.1 | 25/09/2026 | **Biblioteca:** novo projeto "Casa 2 Pavimentos (Referência)" (2 andares, desenho vetorial próprio, modelo para simulações em casas de dois pisos) e "Planta 04 — Apartamento 3 Suítes"; heurísticas de mobília do desenho vetorial ganham mesa de jantar (`jantar`) e escada (`escada`). **Catálogo:** novo roteador **ZTE E2320 / E2620 (ZXHN, Wi-Fi 6)**, 20 dBm (acima do Huawei AX3), com ícone próprio (corpo branco, duas antenas externas) |
 
 **Remoções relacionadas a marca d'água e conteúdo.**
 

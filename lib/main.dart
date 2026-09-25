@@ -153,7 +153,7 @@ class _NetFloorShellState extends State<NetFloorShell> {
 // diferente, usada diretamente no cálculo de propagação do sinal.
 // ---------------------------------------------------------------------------
 
-enum RouterModelType { huaweiAx3, tplinkDeco, unifiAp }
+enum RouterModelType { huaweiAx3, tplinkDeco, unifiAp, zteE2320 }
 
 class RouterModelSpec {
   final RouterModelType type;
@@ -186,6 +186,15 @@ const List<RouterModelSpec> kRouterCatalog = [
     name: 'Ubiquiti UniFi AP',
     shortName: 'UniFi AP',
     txPowerDbm: 28,
+  ),
+  // Ganho/potência configurados acima do Huawei AX3 (18 dBm): CPE Wi-Fi 6 com
+  // maior EIRP por antena externa e beamforming — cobertura e alcance maiores
+  // na simulação de propagação.
+  RouterModelSpec(
+    type: RouterModelType.zteE2320,
+    name: 'ZTE E2320 / E2620 (ZXHN, Wi-Fi 6)',
+    shortName: 'ZTE E2320',
+    txPowerDbm: 20,
   ),
 ];
 
@@ -342,6 +351,44 @@ const FloorPlanDef kPlanCasa2q = FloorPlanDef(
   ],
 );
 
+// Casa 2 Pavimentos: modelo de referência para simulações em casas de dois
+// andares — desenho vetorial próprio (corte esquemático), sem depender de
+// foto de terceiros. Térreo: sala de leitura + escada + sala de TV. Andar
+// superior: sala de estar com varanda + quarto.
+const FloorPlanDef kPlanCasa2pTerreo = FloorPlanDef(
+  id: 'casa_2p_terreo',
+  name: 'Casa 2 Pavimentos — Térreo',
+  subtitle: 'Sala de Leitura · Escada · Sala de TV',
+  aspectRatio: 1.45,
+  defaultWidthM: 9,
+  rooms: [
+    RoomDef('Sala de Estar', Rect.fromLTWH(0.00, 0.00, 0.42, 1.00)),
+    RoomDef('Escada', Rect.fromLTWH(0.42, 0.00, 0.16, 1.00)),
+    RoomDef('Sala de TV', Rect.fromLTWH(0.58, 0.00, 0.42, 1.00)),
+  ],
+  wallSegments: [
+    WallSegment(Offset(0.42, 0.00), Offset(0.42, 1.00)),
+    WallSegment(Offset(0.58, 0.00), Offset(0.58, 1.00)),
+  ],
+);
+
+const FloorPlanDef kPlanCasa2pAndar = FloorPlanDef(
+  id: 'casa_2p_andar',
+  name: 'Casa 2 Pavimentos — 1º Andar',
+  subtitle: 'Sala de Estar com Varanda · Quarto',
+  aspectRatio: 1.45,
+  defaultWidthM: 9,
+  rooms: [
+    RoomDef('Sala de Estar', Rect.fromLTWH(0.00, 0.00, 0.50, 0.84)),
+    RoomDef('Varanda', Rect.fromLTWH(0.00, 0.84, 0.50, 0.16)),
+    RoomDef('Quarto', Rect.fromLTWH(0.50, 0.00, 0.50, 1.00)),
+  ],
+  wallSegments: [
+    WallSegment(Offset(0.50, 0.00), Offset(0.50, 1.00)),
+    WallSegment(Offset(0.00, 0.84), Offset(0.50, 0.84), attenuationDb: 3.5),
+  ],
+);
+
 // Plantas 01-03: espaço reservado para o lote de imagens limpas (sem marca
 // d'água) da biblioteca: assets/floorplans/planta_01.png ... planta_03.png.
 // Enquanto os PNGs não existirem, o app mostra estes desenhos provisórios.
@@ -427,6 +474,34 @@ const FloorPlanDef kPlanta03 = FloorPlanDef(
   ],
 );
 
+// Planta 04: mais um modelo residencial padrão (apartamento de 3 suítes),
+// para ampliar as opções da biblioteca — desenho vetorial próprio.
+const FloorPlanDef kPlanta04 = FloorPlanDef(
+  id: 'planta_04',
+  name: 'Planta 04 — Apartamento 3 Suítes',
+  subtitle: 'Desenho provisório · aguardando planta_04.png',
+  assetPath: 'assets/floorplans/planta_04.png',
+  aspectRatio: 1.6,
+  defaultWidthM: 15,
+  rooms: [
+    RoomDef('Cozinha', Rect.fromLTWH(0.00, 0.00, 0.28, 0.40)),
+    RoomDef('Sala de Jantar', Rect.fromLTWH(0.28, 0.00, 0.30, 0.40)),
+    RoomDef('Sala de Estar', Rect.fromLTWH(0.58, 0.00, 0.42, 0.40)),
+    RoomDef('Quarto 1 (Suíte)', Rect.fromLTWH(0.00, 0.40, 0.34, 0.46)),
+    RoomDef('Banheiro', Rect.fromLTWH(0.00, 0.86, 0.34, 0.14)),
+    RoomDef('Quarto 2', Rect.fromLTWH(0.34, 0.40, 0.33, 0.60)),
+    RoomDef('Quarto 3', Rect.fromLTWH(0.67, 0.40, 0.33, 0.60)),
+  ],
+  wallSegments: [
+    WallSegment(Offset(0.28, 0.00), Offset(0.28, 0.40)),
+    WallSegment(Offset(0.58, 0.00), Offset(0.58, 0.40)),
+    WallSegment(Offset(0.00, 0.40), Offset(1.00, 0.40)),
+    WallSegment(Offset(0.34, 0.40), Offset(0.34, 1.00)),
+    WallSegment(Offset(0.67, 0.40), Offset(0.67, 1.00)),
+    WallSegment(Offset(0.00, 0.86), Offset(0.34, 0.86), attenuationDb: 3.5),
+  ],
+);
+
 // Prédio/escritório: sem imagem ainda (assets/floorplans/edificio_corporativo.png).
 const FloorPlanDef kPlanEscritorio = FloorPlanDef(
   id: 'edificio_corporativo',
@@ -456,6 +531,15 @@ const List<ProjectDef> kProjectLibrary = [
     floors: [FloorDef('Térreo', kPlanCasa2q)],
   ),
   ProjectDef(
+    id: 'casa_2_pavimentos',
+    name: 'Casa 2 Pavimentos (Referência)',
+    subtitle: '2 pavimentos · modelo de referência para casas de dois andares',
+    floors: [
+      FloorDef('Térreo', kPlanCasa2pTerreo),
+      FloorDef('1º Andar', kPlanCasa2pAndar),
+    ],
+  ),
+  ProjectDef(
     id: 'planta_01',
     name: 'Planta 01 — Apartamento 3 Quartos',
     subtitle: '1 pavimento · desenho provisório (aguardando planta_01.png)',
@@ -472,6 +556,12 @@ const List<ProjectDef> kProjectLibrary = [
     name: 'Planta 03 — Apartamento com Terraço',
     subtitle: '1 pavimento · desenho provisório (aguardando planta_03.png)',
     floors: [FloorDef('Térreo', kPlanta03)],
+  ),
+  ProjectDef(
+    id: 'planta_04',
+    name: 'Planta 04 — Apartamento 3 Suítes',
+    subtitle: '1 pavimento · desenho provisório (aguardando planta_04.png)',
+    floors: [FloorDef('Térreo', kPlanta04)],
   ),
   ProjectDef(
     id: 'edificio',
@@ -500,7 +590,16 @@ class RouterNode {
 const double kDefaultHeatOpacity = 0.48;
 
 /// Plantas embutidas no app (para reabrir projetos salvos ou importados).
-const List<FloorPlanDef> kBuiltInPlans = [kPlanCasa2q, kPlanta01, kPlanta02, kPlanta03, kPlanEscritorio];
+const List<FloorPlanDef> kBuiltInPlans = [
+  kPlanCasa2q,
+  kPlanCasa2pTerreo,
+  kPlanCasa2pAndar,
+  kPlanta01,
+  kPlanta02,
+  kPlanta03,
+  kPlanta04,
+  kPlanEscritorio,
+];
 
 FloorPlanDef? builtInPlanById(String id) {
   for (final p in kBuiltInPlans) {
@@ -1091,7 +1190,7 @@ class NetworkModel extends ChangeNotifier {
   }
 }
 
-const String kAppVersion = '8.0';
+const String kAppVersion = '8.1';
 
 // ---------------------------------------------------------------------------
 // Modelo de propagação de sinal (2.5D), agora em METROS reais
@@ -1335,6 +1434,13 @@ class FloorPlanPainter extends CustomPainter {
         RRect.fromRectAndRadius(Rect.fromLTWH(bed.left, bed.top, bed.width, bed.height * 0.24), const Radius.circular(6)),
         white,
       );
+    } else if (l.contains('jantar')) {
+      final table = Rect.fromLTWH(r.left + r.width * 0.24, r.top + r.height * 0.32, r.width * 0.52, r.height * 0.28);
+      canvas.drawRRect(RRect.fromRectAndRadius(table, const Radius.circular(4)), wood);
+      for (final dx in [0.30, 0.50, 0.70]) {
+        canvas.drawCircle(Offset(r.left + r.width * dx, r.top + r.height * 0.18), short * 0.035, woodLight);
+        canvas.drawCircle(Offset(r.left + r.width * dx, r.top + r.height * 0.68), short * 0.035, woodLight);
+      }
     } else if (l.contains('sala') && !l.contains('reunião') && !l.contains('reuniao')) {
       final sofa = Rect.fromLTWH(r.left + r.width * 0.06, r.top + r.height * 0.55, r.width * 0.40, r.height * 0.30);
       canvas.drawRRect(RRect.fromRectAndRadius(sofa, const Radius.circular(8)), fabric);
@@ -1359,6 +1465,15 @@ class FloorPlanPainter extends CustomPainter {
         ..strokeWidth = 1.4;
       for (double x = r.left + 6; x < r.right - 6; x += 10) {
         canvas.drawLine(Offset(x, r.top + 6), Offset(x, r.top + 20), rail);
+      }
+    } else if (l.contains('escada')) {
+      final step = Paint()
+        ..color = const Color(0xFF8B6A4A)
+        ..strokeWidth = 2;
+      const steps = 8;
+      for (var i = 0; i <= steps; i++) {
+        final y = r.top + r.height * i / steps;
+        canvas.drawLine(Offset(r.left + r.width * 0.10, y), Offset(r.right - r.width * 0.10, y), step);
       }
     }
   }
@@ -1793,6 +1908,57 @@ class RouterDevicePainter extends CustomPainter {
     );
   }
 
+  // ZTE E2320 / E2620 (ZXHN, Wi-Fi 6): ONT/roteador branco compacto de mesa,
+  // com duas antenas externas inclinadas e faixa de LEDs de status.
+  void _paintZte(Canvas canvas, Size size) {
+    final w = size.width, h = size.height;
+    final bodyRect = Rect.fromLTWH(w * 0.16, h * 0.42, w * 0.68, h * 0.34);
+    final bodyRRect = RRect.fromRectAndRadius(bodyRect, Radius.circular(h * 0.07));
+    _shadow(canvas, bodyRRect);
+
+    final antennaPaint = Paint()
+      ..color = const Color(0xFF3A3D46)
+      ..strokeWidth = w * 0.05
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(
+      Offset(bodyRect.left + w * 0.10, bodyRect.top + h * 0.02),
+      Offset(bodyRect.left - w * 0.02, h * 0.00),
+      antennaPaint,
+    );
+    canvas.drawLine(
+      Offset(bodyRect.right - w * 0.10, bodyRect.top + h * 0.02),
+      Offset(bodyRect.right + w * 0.02, h * 0.00),
+      antennaPaint,
+    );
+
+    canvas.drawRRect(
+      bodyRRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFDFDFD), Color(0xFFE4E6EA)],
+        ).createShader(bodyRect),
+    );
+    canvas.drawRRect(
+      bodyRRect,
+      Paint()
+        ..color = Colors.black.withOpacity(0.10)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.0,
+    );
+    // Faixa de LEDs de status, padrão dos ONT/roteadores ZTE.
+    final ledY = bodyRect.top + bodyRect.height * 0.62;
+    const ledColors = [Color(0xFF22C55E), Color(0xFF38BDF8), Color(0xFF22C55E)];
+    for (var i = 0; i < 3; i++) {
+      canvas.drawCircle(
+        Offset(bodyRect.left + bodyRect.width * (0.32 + i * 0.18), ledY),
+        h * 0.018,
+        Paint()..color = ledColors[i],
+      );
+    }
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     switch (model) {
@@ -1804,6 +1970,9 @@ class RouterDevicePainter extends CustomPainter {
         break;
       case RouterModelType.unifiAp:
         _paintUnifi(canvas, size);
+        break;
+      case RouterModelType.zteE2320:
+        _paintZte(canvas, size);
         break;
     }
   }
