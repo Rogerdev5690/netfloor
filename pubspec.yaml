@@ -1,5 +1,5 @@
-name: netfloor
-description: "NetFloor - simulador visual de mapa de calor de sinal Wi-Fi Mesh."
+name: wavelens
+description: "WaveLens - simulador visual de mapa de calor de sinal Wi-Fi Mesh (antes NetFloor)."
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -25,4 +25,5 @@ flutter:
   uses-material-design: true
   assets:
     - assets/floorplans/
+    - assets/icon/
     - assets/fonts/

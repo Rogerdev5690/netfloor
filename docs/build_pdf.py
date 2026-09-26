@@ -207,13 +207,13 @@ def logo_svg() -> str:
 def build_cover_html(meta) -> str:
     rev = f"<span>revisão {html.escape(meta['revision'])}</span>" if meta["revision"] else ""
     return f"""<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>NetFloor — Capa</title>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>WaveLens — Capa</title>
 <style>@page {{ size: A4; margin: 0; }}
 {CSS.replace("@page { size: A4; margin: 20mm 17mm 24mm 17mm; }", "")}</style></head><body>
 <section class="cover">
   <div class="tag">DOCUMENTAÇÃO TÉCNICA</div>
   {logo_svg()}
-  <h1>NetFloor</h1>
+  <h1>WaveLens</h1>
   <div class="sub">Simulador de Cobertura Wi-Fi 2.5D e Diagnóstico de Campo Nativo</div>
   <div class="ver">Versão {html.escape(meta['version'])} {rev}</div>
   <div class="date">Atualizada em {html.escape(meta['date'])}</div>
@@ -237,7 +237,7 @@ def build_body_html(body: str, headings, pages) -> str:
     pygments_css = HtmlFormatter(style="default").get_style_defs(".codehilite")
     return f"""<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8">
-<title>NetFloor — Documentação Técnica</title>
+<title>WaveLens — Documentação Técnica</title>
 <base href="{DOCS.as_uri()}/">
 <style>{CSS}
 {pygments_css}</style></head><body>
@@ -288,7 +288,7 @@ def finalize(cover_pdf: Path, body_pdf: Path, out_pdf: Path, headings, pages, me
     writer = PdfWriter(clone_from=PdfReader(str(body_pdf)))
     writer.insert_page(PdfReader(str(cover_pdf)).pages[0], 0)
     total = len(writer.pages)
-    label = f"NetFloor — Documentação Técnica · v{meta['version']}"
+    label = f"WaveLens — Documentação Técnica · v{meta['version']}"
     if meta["revision"]:
         label += f" (rev. {meta['revision']})"
     label += f" · {meta['date']}"
@@ -321,9 +321,9 @@ def finalize(cover_pdf: Path, body_pdf: Path, out_pdf: Path, headings, pages, me
     writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
     writer.page_mode = "/UseOutlines"
     writer.add_metadata({
-        "/Title": f"NetFloor — Documentação Técnica v{meta['version']}",
-        "/Author": "NetFloor",
-        "/Subject": "Documentação técnica completa do aplicativo NetFloor",
+        "/Title": f"WaveLens — Documentação Técnica v{meta['version']}",
+        "/Author": "WaveLens",
+        "/Subject": "Documentação técnica completa do aplicativo WaveLens",
     })
     with open(out_pdf, "wb") as f:
         writer.write(f)

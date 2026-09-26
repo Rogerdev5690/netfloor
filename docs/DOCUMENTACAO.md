@@ -1,19 +1,19 @@
-<!-- doc-version: 8.1 -->
-<!-- doc-revision: 8.1.0 -->
-<!-- doc-date: 25/09/2026 -->
+<!-- doc-version: 8.2 -->
+<!-- doc-revision: 8.2.0 -->
+<!-- doc-date: 26/09/2026 -->
 
 ## 1. Visão Geral e Proposta do Produto
 
 ### 1.1 Conceito
 
-O **NetFloor** é um aplicativo com duas frentes complementares:
+O **WaveLens** é um aplicativo com duas frentes complementares:
 
 1. **Simulador de Cobertura Wi-Fi.** O usuário escolhe uma planta baixa, posiciona roteadores de modelos reais (com potência de transmissão própria) e vê, em tempo real, um **mapa de calor** de sinal sobreposto à planta. O cálculo considera a distância em 3D, a atenuação por paredes (ray-casting) e a atenuação por lajes entre pavimentos.
-2. **Diagnóstico de Campo Nativo (NetFloor Diagnostic).** Uma aba que, quando executada dentro do aplicativo Android (NetFloor Shell), lê os dados **reais** do aparelho: espectro de canais em 2.4 GHz e 5 GHz com saúde do canal, sinal (RSSI) em tempo real e latência (ping duplo: roteador local versus DNS da Internet), além da velocidade PHY negociada. Fora do Shell (navegador comum), a aba funciona em **modo simulação** com dados fictícios, claramente identificados.
+2. **Diagnóstico de Campo Nativo (WaveLens Diagnostic).** Uma aba que, quando executada dentro do aplicativo Android (WaveLens Shell), lê os dados **reais** do aparelho: espectro de canais em 2.4 GHz e 5 GHz com saúde do canal, sinal (RSSI) em tempo real e latência (ping duplo: roteador local versus DNS da Internet), além da velocidade PHY negociada. Fora do Shell (navegador comum), a aba funciona em **modo simulação** com dados fictícios, claramente identificados.
 
 A **versão 8.0 (Enterprise)** acrescenta recursos de campo e de relacionamento com o cliente: **laudo de vistoria em PDF** com assinatura digital, **calibração de escala por régua**, **materiais de parede** com perdas realistas, **simulação em 2.4 / 5 / 6 GHz**, **zoom e deslocamento** do mapa, **modos de visualização** (Apresentação e Diagnóstico) e **armazenamento offline** dos projetos com exportação/importação em `.json` (capítulo 5).
 
-O nome da marca exibida ao usuário é **NetFloor**.
+O nome da marca exibida ao usuário é **WaveLens** (o produto chamava-se **NetFloor** até a v8.1 — seção 1.5 explica o que muda e o que fica igual no rebranding).
 
 ### 1.2 Casos de uso
 
@@ -38,15 +38,30 @@ O nome da marca exibida ao usuário é **NetFloor**.
 
 ### 1.4 Arquitetura Serverless / PWA
 
-O NetFloor **não possui servidor próprio, banco de dados ou API**. Todo o produto é composto de arquivos estáticos:
+O WaveLens **não possui servidor próprio, banco de dados ou API**. Todo o produto é composto de arquivos estáticos:
 
 - O **aplicativo web** (Flutter Web compilado para JavaScript) é publicado em **GitHub Pages**, no endereço `https://rogerdev5690.github.io/netfloor/`.
-- O **NetFloor Shell** é um APK Android que abre esse endereço dentro de uma `WebView` e acrescenta capacidades nativas (Wi-Fi, ping, seletor de arquivos) por meio de uma ponte JavaScript.
+- O **WaveLens Shell** é um APK Android que abre esse endereço dentro de uma `WebView` e acrescenta capacidades nativas (Wi-Fi, ping, seletor de arquivos) por meio de uma ponte JavaScript.
 - Toda a lógica de negócio vive no navegador/WebView; nada é enviado a servidores de terceiros além do carregamento de arquivos estáticos do GitHub. Projetos, laudos e assinaturas ficam **no próprio aparelho** (IndexedDB) e só saem dele quando o usuário exporta ou compartilha um arquivo.
 
 **Atualização OTA (over-the-air).** Como a interface vem do site, publicar uma nova versão do site atualiza o aplicativo instalado no celular na próxima abertura, sem reinstalar o APK. O APK só precisa ser reinstalado quando algo **nativo** muda (código Kotlin, permissões, versão do Shell). Para garantir isso, o build web usa `--pwa-strategy=none` (sem cache agressivo de service worker).
 
-![Arquitetura geral do NetFloor](diagramas/arquitetura.svg)
+![Arquitetura geral do WaveLens](diagramas/arquitetura.svg)
+
+### 1.5 Nome do produto e rebranding (v8.2)
+
+Na v8.2 o produto passou a se chamar **WaveLens** (antes **NetFloor**). O rebranding trocou tudo o que o usuário vê — título do app, cabeçalhos, banners, metadados do laudo em PDF, nome do aplicativo Android (`android:label`) e ícone — mas **preservou deliberadamente** os identificadores técnicos internos, para não quebrar nada que já está publicado:
+
+| Identificador técnico | Continua sendo | Por quê |
+|---|---|---|
+| Repositórios GitHub | `Rogerdev5690/netfloor`, `Rogerdev5690/netfloor-shell` | Renomear o repositório mudaria a URL do site publicado (`rogerdev5690.github.io/netfloor/`) e todos os links já compartilhados |
+| `applicationId` do Android | `com.netfloor.netfloor_shell` | Trocar o `applicationId` faz o Android tratar o app como **outro aplicativo**: quem já tem o app instalado passaria a ter dois ícones, em vez de receber uma atualização. Só o `android:label` (o nome exibido) mudou |
+| Ponte JS `NetFloorNative` | `NetFloorNative` (`@JS('NetFloorNative')` no app web, `addJavaScriptChannel('NetFloorNative', ...)` no Shell) | É um contrato interno entre os dois apps (web e Shell); renomear exigiria publicar os dois ao mesmo tempo sem nenhuma janela de incompatibilidade |
+| `MethodChannel('netfloor/diag')` | `netfloor/diag` | Mesmo motivo: contrato interno entre o Dart do Shell e o Kotlin |
+| Formato dos arquivos `.json` exportados | `"format": "netfloor-project"` | Projetos já exportados por usuários continuam sendo aceitos na importação |
+| Nomes de pacote Dart (`pubspec.yaml`) | `name: wavelens` / `name: wavelens_shell` | Atualizados na v8.2 (são só identificadores internos do Dart, sem risco: nenhum arquivo importa `package:netfloor/...`) |
+
+Em resumo: **tudo que aparece na tela mudou; os "canos" por trás continuam com o nome antigo.**
 
 ## 2. Arquitetura de Software e Stack Tecnológica
 
@@ -64,7 +79,7 @@ O NetFloor **não possui servidor próprio, banco de dados ou API**. Todo o prod
 | Download de arquivos | `web` (`package:web`) | ^1.1.1 | `Blob` + âncora `download` no navegador |
 | Fonte do PDF | Roboto (Apache 2.0) | `assets/fonts/` | Acentos e símbolos no laudo |
 | Interop Web | `dart:js_interop`, `dart:js_interop_unsafe` | SDK Dart | Ponte com o Shell |
-| Android Shell (UI) | **Flutter / Dart** | Shell 3.2.0 (build 5) | Hospeda a WebView e a ponte |
+| Android Shell (UI) | **Flutter / Dart** | Shell 3.3.0 (build 6) | Hospeda a WebView e a ponte |
 | WebView | `webview_flutter` + `webview_flutter_android` | ^4.10.0 / ^4.14.1 | Exibe o site e injeta `NetFloorNative` |
 | Permissões | `permission_handler` | 12.0.1 | Localização e Nearby Wi-Fi |
 | Android nativo | **Kotlin** | JDK 17 (Temurin 17.0.20) | `WifiManager`, ping, `DhcpInfo`, `MediaStore`, `FileProvider` |
@@ -80,14 +95,17 @@ O NetFloor **não possui servidor próprio, banco de dados ou API**. Todo o prod
 | `github.com/Rogerdev5690/netfloor` (branch `main`) | Código-fonte do app web, assets das plantas e esta documentação (`docs/`) |
 | `github.com/Rogerdev5690/netfloor` (branch `gh-pages`) | Build web publicado (gerado, sobrescrito a cada deploy) |
 | `github.com/Rogerdev5690/netfloor-shell` (branch `main`) | Código do Shell Android (Dart + Kotlin) |
-| `github.com/Rogerdev5690/netfloor/releases` | APKs do Shell (v1.0.0 a v3.2.0) |
+| `github.com/Rogerdev5690/netfloor/releases` | APKs do Shell (v1.0.0 a v3.3.0) |
+
+Os nomes dos repositórios (`netfloor`, `netfloor-shell`) e a URL do site (`rogerdev5690.github.io/netfloor/`) permanecem como estavam antes do rebranding v8.2 — ver seção 1.5.
 
 Estrutura local (`C:\Users\Roger\Desktop\Nova pasta\`):
 
 ```text
-netfloor/                      # app web (Flutter)
+netfloor/                      # app web (Flutter) — pubspec name: wavelens
   lib/main.dart                # todo o código do app (arquivo único, ~6.730 linhas)
   assets/floorplans/           # imagens das plantas
+  assets/icon/                 # icon.png (fonte dos ícones web/PWA, seção 2.6)
   assets/fonts/                # Roboto (Regular, Bold, Italic) usada no PDF
   pubspec.yaml
   run_web.bat                  # servidor de desenvolvimento (porta 8090)
@@ -97,10 +115,11 @@ netfloor/                      # app web (Flutter)
     diagramas/*.svg            # diagramas
     Documentacao_Tecnica_App.pdf
   android/                     # legado: build nativo da v1.0.0 (não usado)
-netfloor_shell/                # Shell Android
+netfloor_shell/                # Shell Android — pubspec name: wavelens_shell
   lib/main.dart                # WebView + ponte JS
+  assets/icon/                 # icon.png (fonte do flutter_launcher_icons, seção 2.6)
   android/app/src/main/
-    AndroidManifest.xml        # permissões
+    AndroidManifest.xml        # permissões, android:label = "WaveLens"
     kotlin/com/netfloor/netfloor_shell/MainActivity.kt
 ```
 
@@ -110,12 +129,12 @@ O arquivo único é dividido em três partes:
 
 | Parte | Conteúdo | Classes principais |
 |---|---|---|
-| Raiz | Aplicativo, tema, estado compartilhado e navegação inferior (Simulador / Diagnóstico) | `NetFloorApp`, `NetFloorShell` |
+| Raiz | Aplicativo, tema, estado compartilhado e navegação inferior (Simulador / Diagnóstico) | `WaveLensApp`, `WaveLensShell` |
 | Parte 1 — Simulador | Catálogo, plantas, materiais, bandas, física de sinal, pintura, ferramentas e tela | `RouterModelSpec`, `FloorPlanDef`, `FloorState`, `WallSegment`, `RfBandSpec`, `ProjectDef`, `NetworkModel`, `SignalField`, `HeatmapPainter`, `ToolOverlayPainter`, `FloorPlanPainter`, `RouterDevicePainter`, `RadarPingPainter`, `SimulatorPage` |
 | Parte 2 — Diagnóstico | Ponte nativa, modelos de dados, fontes de dados, controlador e três abas | `NativeBridge`, `WifiNetwork`, `LinkInfo`, `DiagnosticsSource`, `NativeBridgeDiagnostics`, `SimulatedDiagnostics`, `DiagnosticsController`, `DiagnosticPage`, `SpectrumTab`, `SpectrumPainter`, `SignalTab`, `LatencyTab` |
 | Parte 3 — Enterprise | Temas, armazenamento local, entrega de arquivos, assinatura, tela e gerador do laudo | `ViewMode`, `buildTheme`, `AppStore`, `FileIO`, `SignaturePadPage`, `ReportPage`, `LaudoPdf`, `renderFloorRaster` |
 
-**Gerenciamento de estado.** Usa-se `ChangeNotifier` com `AnimatedBuilder`, sem bibliotecas externas. `NetworkModel` guarda projeto, pavimentos (com escala e paredes), roteadores, pontos de medição, registros de diagnóstico e dados do laudo; `DiagnosticsController` guarda varredura, amostras de sinal e de ping. O `NetFloorShell` é dono dos dois e do `AppStore` (armazenamento), repassando-os às telas. Durante o arraste de um roteador só a camada do mapa de calor é redesenhada, mantendo a interação fluida.
+**Gerenciamento de estado.** Usa-se `ChangeNotifier` com `AnimatedBuilder`, sem bibliotecas externas. `NetworkModel` guarda projeto, pavimentos (com escala e paredes), roteadores, pontos de medição, registros de diagnóstico e dados do laudo; `DiagnosticsController` guarda varredura, amostras de sinal e de ping. O `WaveLensShell` é dono dos dois e do `AppStore` (armazenamento), repassando-os às telas. Durante o arraste de um roteador só a camada do mapa de calor é redesenhada, mantendo a interação fluida.
 
 **Composição visual.** A área do mapa fica dentro de um `InteractiveViewer` (zoom e deslocamento) e é um `Stack` de camadas: (1) imagem ou desenho da planta (com filtro de cor conforme o modo de visualização), (2) mapa de calor com desfoque, (3) paredes desenhadas e régua, (4) anéis pulsantes dos roteadores, (5) roteadores de outros andares (esmaecidos), pontos de medição e roteadores do andar, com tamanho constante na tela. Por cima, fora do zoom, ficam o selo de escala, a legenda e os botões de zoom.
 
@@ -133,7 +152,7 @@ O Shell é um aplicativo Flutter mínimo cujo corpo é uma `WebView` em tela che
 | Expor a ponte | `addJavaScriptChannel('NetFloorNative', ...)` |
 | Permissões em tempo de execução | `permission_handler`: `locationWhenInUse` e `nearbyWifiDevices` |
 | Seletor de arquivos | `AndroidWebViewController.setOnShowFileSelector` chama `FilePicker.pickFile`/`pickFiles` e devolve URIs; quando a página pede `.json` (importação de projeto), abre o seletor filtrado por JSON |
-| Entrega de arquivos (3.2.0) | Método `saveFile` da ponte: remonta o arquivo recebido em pedaços de base64 e o entrega ao Kotlin, que grava em **Downloads/NetFloor** (`MediaStore`) ou abre a **folha de compartilhamento** (`FileProvider`) |
+| Entrega de arquivos (3.2.0) | Método `saveFile` da ponte: remonta o arquivo recebido em pedaços de base64 e o entrega ao Kotlin, que grava em **Downloads/WaveLens** (`MediaStore`) ou abre a **folha de compartilhamento** (`FileProvider`) |
 | Acesso ao Wi-Fi | `MethodChannel('netfloor/diag')` para o Kotlin |
 
 ### 2.5 Ponte de Comunicação (JS Bridge)
@@ -171,9 +190,20 @@ A ponte é **bidirecional** e assíncrona, baseada em mensagens JSON com identif
 3. No Shell, a resposta é serializada duas vezes (`jsonEncode(jsonEncode(...))`) para formar um literal de string JavaScript válido antes de `runJavaScript`.
 4. Estourando o tempo limite, a chamada lança `TimeoutException` e a UI mostra o erro da respectiva aba.
 
-**Envio de arquivos (`saveFile`).** Mensagens grandes na ponte JS são frágeis; por isso o app web divide o arquivo em pedaços de 256 KB de base64 (`chunk` 0 a `chunks − 1`). O Shell acumula os pedaços e, no último, decodifica os bytes e os passa por `MethodChannel` ao Kotlin. Com `share = false` o arquivo vai para `Downloads/NetFloor` (Android 10+: `MediaStore.Downloads`; antes: pasta de downloads do app, sem exigir permissão de armazenamento); com `share = true` é copiado para o cache e aberto na folha de compartilhamento (WhatsApp, e-mail, Drive…). O app web só usa esse caminho se `hello` informar Shell ≥ 3.2.0; em navegador comum faz o download normal por `Blob`.
+**Envio de arquivos (`saveFile`).** Mensagens grandes na ponte JS são frágeis; por isso o app web divide o arquivo em pedaços de 256 KB de base64 (`chunk` 0 a `chunks − 1`). O Shell acumula os pedaços e, no último, decodifica os bytes e os passa por `MethodChannel` ao Kotlin. Com `share = false` o arquivo vai para `Downloads/WaveLens` (Android 10+: `MediaStore.Downloads`; antes: pasta de downloads do app, sem exigir permissão de armazenamento); com `share = true` é copiado para o cache e aberto na folha de compartilhamento (WhatsApp, e-mail, Drive…). O app web só usa esse caminho se `hello` informar Shell ≥ 3.2.0; em navegador comum faz o download normal por `Blob`.
 
 **Segurança.** A ponte só existe na WebView do Shell, e o Shell bloqueia navegação para domínios diferentes do GitHub Pages do projeto. Métodos desconhecidos são rejeitados (`UnsupportedError`). O `ping` valida o nome do host por expressão regular antes de executar.
+
+### 2.6 Ícone do aplicativo
+
+O ícone (launcher do Android e favicon/PWA do site) é um arquivo único, `assets/icon/icon.png` — **1024×1024, PNG, sem cantos arredondados** (o próprio Android/navegador aplica a máscara/arredondamento na hora de exibir).
+
+| Onde | Gerado a partir de | Como regenerar |
+|---|---|---|
+| `netfloor/web/icons/Icon-192.png`, `Icon-512.png`, `Icon-maskable-*.png`, `web/favicon.png` | `netfloor/assets/icon/icon.png` (redimensionado) | Script Python com Pillow (`Image.resize`), rodado manualmente |
+| `netfloor_shell/android/app/src/main/res/mipmap-*/ic_launcher.png` (5 densidades) | `netfloor_shell/assets/icon/icon.png` | Pacote `flutter_launcher_icons` (dev dependency), configurado em `netfloor_shell/pubspec.yaml`: `flutter pub run flutter_launcher_icons` (ou `dart run flutter_launcher_icons`) |
+
+**Para trocar o ícone:** substitua os dois arquivos `assets/icon/icon.png` (idênticos, um em cada repositório) por uma imagem quadrada de alta resolução (1024×1024 recomendado, fundo sólido até a borda, sem transparência nas bordas) e rode novamente o gerador do Shell + o script de redimensionamento do web, depois publique (seção 7.6) e gere um novo APK (seção 7.7, obrigatório sempre que o ícone/launcher muda — é um recurso nativo, não chega por OTA).
 
 ## 3. Motor do Simulador e Engenharia de RF
 
@@ -448,7 +478,7 @@ Ao trocar de aba ou de tela, os temporizadores são cancelados e recriados confo
 | Seleção múltipla de imagens no Shell 3.1.0 | Compilado; ainda não validado em aparelho |
 | Testes automatizados | Não há (o app usa `dart:js_interop`, que não executa na VM de testes) |
 
-## 5. NetFloor Enterprise (v8.0)
+## 5. WaveLens Enterprise (v8.0)
 
 ### 5.1 Visão geral
 
@@ -583,8 +613,8 @@ O botão **Coletar assinatura** abre uma tela cheia com um quadro branco (`Signa
 | Ambiente | Comportamento |
 |---|---|
 | Navegador / PWA | Download por `Blob` + `<a download>` (`FileIO._browserDownload`) |
-| Shell Android ≥ 3.2.0 | `FileIO.deliver` envia o arquivo pela ponte (`saveFile`, em pedaços de base64): **Gerar laudo em PDF** salva em `Downloads/NetFloor`; **Gerar e compartilhar** abre a folha de compartilhamento do Android |
-| Shell Android < 3.2.0 | O app mostra "Atualize o app NetFloor Shell (3.2 ou superior)" |
+| Shell Android ≥ 3.2.0 | `FileIO.deliver` envia o arquivo pela ponte (`saveFile`, em pedaços de base64): **Gerar laudo em PDF** salva em `Downloads/WaveLens`; **Gerar e compartilhar** abre a folha de compartilhamento do Android |
+| Shell Android < 3.2.0 | O app mostra "Atualize o app WaveLens Shell (3.2 ou superior)" |
 
 O Kotlin usa `MediaStore.Downloads` (Android 10+), sem pedir permissão de armazenamento, e `FileProvider` (`<appId>.fileprovider`, `cache-path shared/`) para o compartilhamento. Nomes de arquivo são sanitizados.
 
@@ -647,6 +677,8 @@ Isso permite deixar a **vaga** de uma planta reservada: enquanto o PNG não exis
 5. Inclua a planta em um `ProjectDef` na lista `kProjectLibrary`.
 6. Publique (seção 7): commit no `main`, build web e deploy no `gh-pages`.
 
+Esse processo já é genérico e está pronto para receber novas plantas a qualquer momento — basta o arquivo de imagem (limpo, sem marca d'água de terceiros) e os 6 passos acima; nenhuma mudança de estrutura é necessária.
+
 ### 6.5 Upload em memória (`Uint8List`)
 
 O botão **Carregar plantas do dispositivo** (biblioteca) e o chip **+ Pavimento** aceitam **uma ou várias** imagens (PNG, JPG, WEBP):
@@ -673,12 +705,13 @@ O botão **Carregar plantas do dispositivo** (biblioteca) e o chip **+ Pavimento
 | 2.0 | 15/09/2026 | Catálogo de roteadores (18/23/28 dBm); biblioteca de plantas; fórmula $P_{tx} - 22\log_{10}(d)$; **arquitetura OTA** (site + Shell WebView, release v2.0.0) |
 | 4.0 | 15/09/2026 | Plantas ilustradas (piso, móveis, paredes espessas); **ray-casting de paredes**; overlay do calor a ~48 %; `Image.network` com fallback |
 | 5.1 | 16/09/2026 | Plantas reais como assets (Casa 2 Quartos com correção de espelhamento, Casa 3 Quartos e Apartamento 2 Quartos, este com marca d'água de terceiros aceita pelo usuário na época) |
-| 6.0 | 18/09/2026 | Upload de plantas em memória; **NetFloor Diagnostic** (espectro, sinal, latência); ponte JS + Kotlin; Shell 3.0.0; assets movidos para `assets/floorplans/` |
+| 6.0 | 18/09/2026 | Upload de plantas em memória; **WaveLens Diagnostic** (espectro, sinal, latência); ponte JS + Kotlin; Shell 3.0.0; assets movidos para `assets/floorplans/` |
 | 6.1 | 18/09/2026 | Destaque e sublinhado da rede conectada e da rede de mesmo SSID em outra banda; saúde do canal desconsidera a própria rede |
 | 7.0 | 19/09/2026 | **Projetos com vários pavimentos (2.5D)**, distância 3D e perda de laje de 15 dB; posições dos roteadores em frações; upload em lote; novas plantas limpas; cartão "Rede conectada"; Shell 3.1.0 |
 | 7.0.1 | 19/09/2026 | **Limpeza da biblioteca:** remoção do projeto Sobrado (térreo e 1º andar) e do arquivo `sobrado_1andar.png`; vagas `planta_01..03` com desenho provisório |
-| 8.0 | 21/09/2026 | **NetFloor Enterprise:** laudo de vistoria em PDF com logo, mapas por banda, tabelas previsto × medido e **assinatura digital**; `InteractiveViewer` (zoom/pan); **calibração de escala por régua** (o cálculo passa a ser em metros reais); **materiais de parede** e ferramenta de desenho; **2.4 / 5 / 6 GHz**; pontos e **medição de campo** (RSSI, PHY, ping duplo, perda); modos **Apresentação** e **Diagnóstico**; **persistência offline** (IndexedDB) e exportar/importar `.json`; Shell 3.2.0 (`saveFile`, compartilhamento, seletor `.json`); a constante `kPixelsPerMeter` deixa de existir |
+| 8.0 | 21/09/2026 | **WaveLens Enterprise:** laudo de vistoria em PDF com logo, mapas por banda, tabelas previsto × medido e **assinatura digital**; `InteractiveViewer` (zoom/pan); **calibração de escala por régua** (o cálculo passa a ser em metros reais); **materiais de parede** e ferramenta de desenho; **2.4 / 5 / 6 GHz**; pontos e **medição de campo** (RSSI, PHY, ping duplo, perda); modos **Apresentação** e **Diagnóstico**; **persistência offline** (IndexedDB) e exportar/importar `.json`; Shell 3.2.0 (`saveFile`, compartilhamento, seletor `.json`); a constante `kPixelsPerMeter` deixa de existir |
 | 8.1 | 25/09/2026 | **Biblioteca:** novo projeto "Casa 2 Pavimentos (Referência)" (2 andares, desenho vetorial próprio, modelo para simulações em casas de dois pisos) e "Planta 04 — Apartamento 3 Suítes"; heurísticas de mobília do desenho vetorial ganham mesa de jantar (`jantar`) e escada (`escada`). **Catálogo:** novo roteador **ZTE E2320 / E2620 (ZXHN, Wi-Fi 6)**, 20 dBm (acima do Huawei AX3), com ícone próprio (corpo branco, duas antenas externas) |
+| 8.2 | 26/09/2026 | **Rebranding:** o produto passa a se chamar **WaveLens** (antes NetFloor) — título, cabeçalhos, banners, metadados do laudo em PDF e `android:label` do APK atualizados; identificadores técnicos internos (repositórios GitHub, `applicationId` Android, ponte `NetFloorNative`, canal `netfloor/diag`, formato `netfloor-project`) mantidos por compatibilidade (seção 1.5). **Ícone novo:** desenho próprio (wifi + roteador + globo, azul), com `flutter_launcher_icons` configurado no Shell e script de redimensionamento para os ícones do site/PWA (seção 2.6). Shell 3.3.0 (novo `android:label`, pasta de downloads passa a ser `Downloads/WaveLens`) |
 
 **Remoções relacionadas a marca d'água e conteúdo.**
 
@@ -727,13 +760,14 @@ flutter:
   uses-material-design: true
   assets:
     - assets/floorplans/
-    - assets/fonts/      # Roboto (Regular, Bold, Italic) para o PDF
+    - assets/icon/        # icon.png (fonte dos ícones web/PWA, seção 2.6)
+    - assets/fonts/       # Roboto (Regular, Bold, Italic) para o PDF
 ```
 
 **Shell Android (`netfloor_shell`)**
 
 ```yaml
-version: 3.2.0+5
+version: 3.3.0+6
 dependencies:
   flutter:
     sdk: flutter
@@ -742,6 +776,9 @@ dependencies:
   webview_flutter_android: ^4.14.1
   permission_handler: 12.0.1   # a 13.x exige compileSdk 37 (não suportado pelo Gradle atual)
   file_picker: ^13.1.0         # seletor de arquivos para o <input type="file">
+
+dev_dependencies:
+  flutter_launcher_icons: ^0.14.4   # gera ic_launcher.png em mipmap-* a partir de assets/icon/icon.png
 ```
 
 ### 7.3 Permissões do Android (`AndroidManifest.xml` do Shell)
@@ -767,7 +804,7 @@ dependencies:
 
 Além das permissões, o manifesto do Shell 3.2.0 declara um `FileProvider` (`androidx.core.content.FileProvider`, autoridade `${applicationId}.fileprovider`, caminhos em `res/xml/file_paths.xml`: `cache-path shared/`) usado para compartilhar o laudo. Salvar em Downloads não exige permissão (usa `MediaStore` no Android 10+).
 
-Identificação do Shell: `applicationId = com.netfloor.netfloor_shell`, rótulo **NetFloor**, `versionName 3.2.0`, `versionCode 5`. O APK é assinado com a **chave de debug** do Flutter (adequado a uso pessoal; a Play Store exigiria uma keystore própria).
+Identificação do Shell: `applicationId = com.netfloor.netfloor_shell`, rótulo **WaveLens**, `versionName 3.2.0`, `versionCode 5`. O APK é assinado com a **chave de debug** do Flutter (adequado a uso pessoal; a Play Store exigiria uma keystore própria).
 
 ### 7.4 Desenvolvimento local
 
@@ -801,7 +838,7 @@ Não há GitHub Actions: o pipeline é manual e reproduzível, sempre nesta orde
 ```bash
 cd netfloor/build/web
 rm -rf .git && git init -q && git checkout -q -b gh-pages
-git add -A && git commit -q -m "Deploy: NetFloor vX.Y"
+git add -A && git commit -q -m "Deploy: WaveLens vX.Y"
 git remote add origin https://github.com/Rogerdev5690/netfloor.git
 git push -f origin gh-pages
 ```
@@ -813,10 +850,11 @@ git push -f origin gh-pages
 
 ```bat
 cd "C:\Users\Roger\Desktop\Nova pasta\netfloor_shell"
-:: pubspec.yaml -> version: 3.2.0+5  (e kShellVersion em lib/main.dart)
+:: pubspec.yaml -> version: 3.3.0+6  (e kShellVersion em lib/main.dart)
+:: Trocou o ícone/label? Rode antes: dart run flutter_launcher_icons (seção 2.6)
 flutter build apk --release
-gh release create v3.2.0 build/app/outputs/flutter-apk/app-release.apk#NetFloor-v3.2.0-shell.apk ^
-  --repo Rogerdev5690/netfloor --title "NetFloor Shell v3.2.0" --notes "..."
+gh release create v3.3.0 build/app/outputs/flutter-apk/app-release.apk#WaveLens-v3.3.0-shell.apk ^
+  --repo Rogerdev5690/netfloor --title "WaveLens Shell v3.3.0" --notes "..."
 ```
 
 | Release | Conteúdo |
@@ -825,7 +863,8 @@ gh release create v3.2.0 build/app/outputs/flutter-apk/app-release.apk#NetFloor-
 | v2.0.0 | Primeiro Shell WebView (arquitetura OTA) |
 | v3.0.0 | Shell com diagnóstico nativo (ponte JS, Wi-Fi, permissões, seletor de arquivos) |
 | v3.1.0 | Seleção múltipla de imagens no seletor de arquivos |
-| v3.2.0 | Entrega de arquivos (`saveFile`: Downloads e compartilhamento), seletor de `.json` para importar projetos (**atual**) |
+| v3.2.0 | Entrega de arquivos (`saveFile`: Downloads e compartilhamento), seletor de `.json` para importar projetos |
+| v3.3.0 | Rebranding: `android:label` = WaveLens, novo ícone do launcher, pasta `Downloads/WaveLens` (**atual**) |
 
 **Regra de versão do Shell:** incrementar o `versionCode` (o número após `+`) a cada APK novo; mudar o número maior quando houver novos recursos nativos. O APK atualiza o anterior por cima (mesmo `applicationId` e mesma chave de assinatura).
 
@@ -854,7 +893,7 @@ gh release create v3.2.0 build/app/outputs/flutter-apk/app-release.apk#NetFloor-
 | `fontSize != null … fontSizeFactor` ao trocar de tema | `TextTheme.apply(fontSizeFactor)` não aceita estilos sem tamanho | Escalar o texto por `MediaQuery.textScaler` |
 | Texto ilegível em cartões claros no tema escuro | Cores de fundo fixas (âmbar, verde, laranja) com texto herdado do tema | Fixar `Colors.black87` nesses cartões |
 | PDF muito grande (> 5 MB) | Imagem bruta RGBA incorporada | Codificar o mapa em JPEG antes de incorporar |
-| "Atualize o app NetFloor Shell" ao gerar o laudo no celular | Shell anterior à 3.2.0 não tem `saveFile` | Instalar o APK 3.2.0 |
+| "Atualize o app WaveLens Shell" ao gerar o laudo no celular | Shell anterior à 3.2.0 não tem `saveFile` | Instalar o APK 3.2.0 |
 
 ### 7.10 Segurança e privacidade
 

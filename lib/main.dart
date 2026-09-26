@@ -1,6 +1,10 @@
-// NetFloor v8.0 (Enterprise) — simulador de mapa de calor Wi-Fi 2.5D (vários pavimentos,
-// 2.4/5/6 GHz, escala calibrável, materiais de parede) + NetFloor Diagnostic +
-// laudo de vistoria em PDF com assinatura digital + projetos offline (.json).
+// WaveLens v8.2 (Enterprise) — simulador de mapa de calor Wi-Fi 2.5D (vários
+// pavimentos, 2.4/5/6 GHz, escala calibrável, materiais de parede) + WaveLens
+// Diagnostic + laudo de vistoria em PDF com assinatura digital + projetos
+// offline (.json). Rebranding v8.2: o app se chamava NetFloor até a v8.1;
+// identificadores técnicos internos (repositórios GitHub, applicationId
+// Android, ponte `NetFloorNative`, formato `netfloor-project`) permanecem
+// com o nome antigo por compatibilidade — ver seção 1.5 da documentação.
 //
 // pubspec.yaml (dependências necessárias):
 //
@@ -23,7 +27,7 @@
 //
 // Este arquivo compila para Flutter Web/PWA (usa dart:js_interop). Os recursos
 // nativos do Android (varredura Wi-Fi, RSSI, ping, salvar/compartilhar arquivos)
-// chegam pela ponte JS `NetFloorNative`, exposta pelo app NetFloor Shell
+// chegam pela ponte JS `NetFloorNative`, exposta pelo app WaveLens Shell
 // (WebView). Fora do Shell (navegador comum / PWA), a aba Diagnóstico roda em
 // modo simulação e os arquivos são baixados pelo navegador.
 
@@ -45,17 +49,17 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:sembast_web/sembast_web.dart';
 import 'package:web/web.dart' as web;
 
-void main() => runApp(const NetFloorApp());
+void main() => runApp(const WaveLensApp());
 
-class NetFloorApp extends StatelessWidget {
-  const NetFloorApp({super.key});
+class WaveLensApp extends StatelessWidget {
+  const WaveLensApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ViewMode>(
       valueListenable: kViewMode,
       builder: (context, mode, _) => MaterialApp(
-        title: 'NetFloor',
+        title: kAppName,
         debugShowCheckedModeBanner: false,
         theme: buildTheme(mode),
         // Modo Diagnóstico: texto um pouco maior para leitura sob sol forte.
@@ -65,7 +69,7 @@ class NetFloorApp extends StatelessWidget {
                 child: child!,
               )
             : child!,
-        home: const NetFloorShell(),
+        home: const WaveLensShell(),
       ),
     );
   }
@@ -74,14 +78,14 @@ class NetFloorApp extends StatelessWidget {
 /// Navegação principal: Simulador (mapa de calor) e Diagnóstico (Wi-Fi).
 /// Também é dono do estado compartilhado: modelo do projeto, controlador do
 /// diagnóstico e armazenamento local (offline-first).
-class NetFloorShell extends StatefulWidget {
-  const NetFloorShell({super.key});
+class WaveLensShell extends StatefulWidget {
+  const WaveLensShell({super.key});
 
   @override
-  State<NetFloorShell> createState() => _NetFloorShellState();
+  State<WaveLensShell> createState() => _WaveLensShellState();
 }
 
-class _NetFloorShellState extends State<NetFloorShell> {
+class _WaveLensShellState extends State<WaveLensShell> {
   final DiagnosticsController _diag = DiagnosticsController();
   final NetworkModel _net = NetworkModel();
   final AppStore _store = AppStore();
@@ -631,7 +635,7 @@ class FloorState {
 /// Resultado de uma medição de campo (RSSI + PHY + ping gateway/Internet).
 class Measurement {
   final DateTime time;
-  final bool native; // false = dados simulados (fora do NetFloor Shell)
+  final bool native; // false = dados simulados (fora do WaveLens Shell)
   final String ssid;
   final String bssid;
   final String bandLabel;
@@ -1094,7 +1098,8 @@ class NetworkModel extends ChangeNotifier {
   /// Restaura o estado a partir de [j]. [images] traz os bytes das plantas
   /// personalizadas (por id). Lança [FormatException] se o documento for inválido.
   void applyJson(Map<String, dynamic> j, Map<String, Uint8List> images, {bool newId = false}) {
-    if (j['format'] != 'netfloor-project') throw const FormatException('Arquivo não é um projeto do NetFloor.');
+    // 'netfloor-project' é o identificador interno do formato (mantido por compatibilidade com exports antigos).
+    if (j['format'] != 'netfloor-project') throw const FormatException('Arquivo não é um projeto do WaveLens.');
     final newFloors = <FloorState>[];
     for (final raw in (j['floors'] as List? ?? const [])) {
       final f = (raw as Map).cast<String, dynamic>();
@@ -1190,7 +1195,12 @@ class NetworkModel extends ChangeNotifier {
   }
 }
 
-const String kAppVersion = '8.1';
+const String kAppVersion = '8.2';
+
+/// Nome do produto exibido ao usuário (título, cabeçalhos, laudo em PDF).
+/// Identificadores técnicos internos (bridge `NetFloorNative`, formato de
+/// arquivo `netfloor-project`, repositórios/URL) não mudam com o rebranding.
+const String kAppName = 'WaveLens';
 
 // ---------------------------------------------------------------------------
 // Modelo de propagação de sinal (2.5D), agora em METROS reais
@@ -2599,7 +2609,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
                   child: ListTile(
                     leading: const Icon(Icons.file_open_outlined),
                     title: const Text('Importar projeto (.json)'),
-                    subtitle: const Text('Reabre um projeto exportado pelo NetFloor'),
+                    subtitle: const Text('Reabre um projeto exportado pelo WaveLens'),
                     onTap: () => Navigator.pop(ctx, _importSentinel),
                   ),
                 ),
@@ -2624,7 +2634,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Text(
                           widget.store.available
-                              ? 'Nenhum projeto salvo ainda — o NetFloor salva automaticamente o que você faz.'
+                              ? 'Nenhum projeto salvo ainda — o WaveLens salva automaticamente o que você faz.'
                               : 'O armazenamento local do navegador está indisponível: os projetos não serão salvos.',
                           style: const TextStyle(fontSize: 13),
                         ),
@@ -2896,7 +2906,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
             children: [
               const Row(
                 mainAxisSize: MainAxisSize.min,
-                children: [Icon(Icons.wifi_tethering), SizedBox(width: 8), Text('NetFloor')],
+                children: [const Icon(Icons.wifi_tethering), const SizedBox(width: 8), Text(kAppName)],
               ),
               Text(
                 '${_model.workspaceName}${widget.store.status.value.isEmpty ? '' : ' · ${widget.store.status.value}'}',
@@ -3487,7 +3497,7 @@ class PointMarkerPainter extends CustomPainter {
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// Ponte nativa (Android): disponível apenas dentro do NetFloor Shell, que
+// Ponte nativa (Android): disponível apenas dentro do WaveLens Shell, que
 // expõe `window.NetFloorNative.postMessage(json)` e responde chamando
 // `window.__netfloorNativeResponse(json)`.
 // ---------------------------------------------------------------------------
@@ -4245,7 +4255,7 @@ class _DiagnosticPageState extends State<DiagnosticPage> with SingleTickerProvid
           children: [
             Icon(Icons.network_check),
             SizedBox(width: 8),
-            Text('NetFloor Diagnostic'),
+            Text('$kAppName Diagnostic'),
           ],
         ),
         actions: [
@@ -4307,7 +4317,7 @@ class _SourceBanner extends StatelessWidget {
             child: Text(
               native
                   ? 'Dados reais do aparelho Android.'
-                  : 'Modo simulação: dados fictícios. Abra o NetFloor no app Android (NetFloor Shell 3.0+) para a varredura real.',
+                  : 'Modo simulação: dados fictícios. Abra o WaveLens no app Android (WaveLens Shell 3.0+) para a varredura real.',
               style: const TextStyle(fontSize: 12, color: Colors.black87),
             ),
           ),
@@ -5546,7 +5556,7 @@ class AppStore {
 
 // ---------------------------------------------------------------------------
 // Entrega de arquivos (PDF e .json): download do navegador ou, dentro do
-// NetFloor Shell (Android 3.2+), gravação em Downloads / folha de compartilhar.
+// WaveLens Shell (Android 3.2+), gravação em Downloads / folha de compartilhar.
 // ---------------------------------------------------------------------------
 
 class FileIO {
@@ -5583,7 +5593,7 @@ class FileIO {
   static Future<String> deliver(String name, String mime, Uint8List bytes, {bool share = false}) async {
     if (NativeBridge.available) {
       if (!await nativeFilesSupported()) {
-        throw StateError('Atualize o app NetFloor Shell (3.2 ou superior) para salvar/compartilhar arquivos.');
+        throw StateError('Atualize o app WaveLens Shell (3.2 ou superior) para salvar/compartilhar arquivos.');
       }
       const chunkChars = 262144; // 256 KB de base64 por mensagem (múltiplo de 4)
       final b64 = base64Encode(bytes);
@@ -6331,8 +6341,8 @@ class LaudoPdf {
 
     final doc = pw.Document(
       title: 'Laudo de Vistoria Wi-Fi — ${r.client.isEmpty ? m.workspaceName : r.client}',
-      author: r.technician.isEmpty ? (r.company.isEmpty ? 'NetFloor' : r.company) : r.technician,
-      creator: 'NetFloor $kAppVersion',
+      author: r.technician.isEmpty ? (r.company.isEmpty ? kAppName : r.company) : r.technician,
+      creator: '$kAppName $kAppVersion',
       subject: 'Laudo de vistoria de cobertura Wi-Fi',
     );
     final theme = pw.ThemeData.withFont(base: regular, bold: bold, italic: italic);
@@ -6469,7 +6479,7 @@ class LaudoPdf {
           child: pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
-              pw.Text('Laudo de vistoria Wi-Fi · gerado pelo NetFloor $kAppVersion', style: st(size: 8, color: _muted)),
+              pw.Text('Laudo de vistoria Wi-Fi · gerado pelo $kAppName $kAppVersion', style: st(size: 8, color: _muted)),
               pw.Text('Página ${ctx.pageNumber} de ${ctx.pagesCount}', style: st(size: 8, color: _muted)),
             ],
           ),
@@ -6597,7 +6607,7 @@ class LaudoPdf {
           alignment: pw.Alignment.centerRight,
           padding: const pw.EdgeInsets.only(top: 6),
           decoration: const pw.BoxDecoration(border: pw.Border(top: pw.BorderSide(color: _line, width: 0.5))),
-          child: pw.Text('Laudo de vistoria Wi-Fi · NetFloor $kAppVersion', style: st(size: 8, color: _muted)),
+          child: pw.Text('Laudo de vistoria Wi-Fi · $kAppName $kAppVersion', style: st(size: 8, color: _muted)),
         ),
         build: (ctx) => [
           pw.Text('Diagnóstico e pontos críticos', style: st(size: 15, b: true, color: _primary)),
@@ -6638,7 +6648,7 @@ class LaudoPdf {
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 6),
               child: pw.Text(
-                'ATENÇÃO: há medições marcadas como simuladas (coletadas fora do aplicativo Android NetFloor Shell). '
+                'ATENÇÃO: há medições marcadas como simuladas (coletadas fora do aplicativo Android WaveLens Shell). '
                 'Elas não representam a rede real do cliente.',
                 style: st(size: 8.5, b: true, color: const PdfColor.fromInt(0xFFB91C1C)),
               ),
