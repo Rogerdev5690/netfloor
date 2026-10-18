@@ -1,5 +1,5 @@
 <!-- doc-version: 8.2 -->
-<!-- doc-revision: 8.2.1 -->
+<!-- doc-revision: 8.2.2 -->
 <!-- doc-date: 18/10/2026 -->
 
 ## 1. Visão Geral e Proposta do Produto
@@ -117,7 +117,8 @@ netfloor/                      # app web (Flutter) — pubspec name: wavelens
     diagramas/*.svg            # diagramas
     Documentacao_Tecnica_App.pdf
   android/                     # legado: build nativo da v1.0.0 (não usado)
-netfloor_shell/                # Shell Android — pubspec name: wavelens_shell
+netfloor_shell/                # Shell Android LEGADO (até 3.3.0) — substituído por wavelens_app (seção 2.8)
+wavelens_app/                  # App Android COMPLETO 4.0.0 (WaveLens + APR) — repositório PRIVADO
   lib/main.dart                # WebView + ponte JS
   assets/icon/                 # icon.png (fonte do flutter_launcher_icons, seção 2.6)
   android/app/src/main/
@@ -163,6 +164,8 @@ O Shell é um aplicativo Flutter mínimo cujo corpo é uma `WebView` em tela che
 | Seletor de arquivos | `AndroidWebViewController.setOnShowFileSelector` chama `FilePicker.pickFile`/`pickFiles` e devolve URIs; quando a página pede `.json` (importação de projeto), abre o seletor filtrado por JSON |
 | Entrega de arquivos (3.2.0) | Método `saveFile` da ponte: remonta o arquivo recebido em pedaços de base64 e o entrega ao Kotlin, que grava em **Downloads/WaveLens** (`MediaStore`) ou abre a **folha de compartilhamento** (`FileProvider`) |
 | Acesso ao Wi-Fi | `MethodChannel('netfloor/diag')` para o Kotlin |
+
+> **Desde a 4.0.0 o Shell vive dentro do app completo** (seção 2.8). A tabela acima continua valendo: a `WaveLensPage` do app completo faz exatamente esse papel. O projeto `netfloor_shell` fica como legado (último APK: 3.3.0).
 
 ### 2.5 Ponte de Comunicação (JS Bridge)
 
@@ -213,6 +216,26 @@ O ícone (launcher do Android e favicon/PWA do site) é um arquivo único, `asse
 | `netfloor_shell/android/app/src/main/res/mipmap-*/ic_launcher.png` (5 densidades) | `netfloor_shell/assets/icon/icon.png` | Pacote `flutter_launcher_icons` (dev dependency), configurado em `netfloor_shell/pubspec.yaml`: `flutter pub run flutter_launcher_icons` (ou `dart run flutter_launcher_icons`) |
 
 **Para trocar o ícone:** substitua os dois arquivos `assets/icon/icon.png` (idênticos, um em cada repositório) por uma imagem quadrada de alta resolução (1024×1024 recomendado, fundo sólido até a borda, sem transparência nas bordas) e rode novamente o gerador do Shell + o script de redimensionamento do web, depois publique (seção 7.6) e gere um novo APK (seção 7.7, obrigatório sempre que o ícone/launcher muda — é um recurso nativo, não chega por OTA).
+
+### 2.8 App completo: WaveLens + APR (v4.0.0)
+
+A partir da 4.0.0 a equipe instala **um único APK** com dois módulos na tela inicial. O Shell antigo passou a ser o módulo WaveLens e o aplicativo de **APR (Análise Preliminar de Riscos)** da Sulnet foi incorporado como segundo módulo.
+
+| Item | Valor |
+|---|---|
+| Projeto | `wavelens_app/` — repositório **privado** `Rogerdev5690/wavelens-app` (o APR é código da empresa) |
+| `applicationId` | `com.netfloor.netfloor_shell` (inalterado: o APK **atualiza por cima** do Shell 3.3.0; mesma chave de assinatura) |
+| Versão | `4.0.0+7` |
+| Tela inicial | `lib/home/home_page.dart`: um cartão por módulo; o botão "voltar" retorna a ela |
+| Módulo WaveLens | `lib/wavelens/wavelens_page.dart`: WebView do site + ponte nativa (mesmo contrato da seção 2.5). As atualizações do simulador continuam **OTA** (basta publicar o site) |
+| Módulo APR | `lib/apr/`: arquitetura limpa (domain / data / presentation), `flutter_bloc`, `get_it`, `sqflite` (fila offline), `geolocator`, `pdf`/`printing`/`share_plus`. Funciona **sem sinal**; o envio por e-mail ocorre quando houver conexão |
+| Servidor do APR | `apr_server/` (FastAPI): recebe a APR e envia o e-mail; hospeda o APK de atualização. **Ainda não implantado** |
+| Nativo (Kotlin) | `MainActivity.kt` concentra a ponte Wi-Fi/ping/arquivos do WaveLens e o instalador de APK do APR (canal `br.com.sulnet.apr/updater`); `AprFileProvider` para instalar a atualização |
+| Permissões novas | `REQUEST_INSTALL_PACKAGES` (instalar a atualização do APR) |
+
+**Segurança da integração.** Sem a URL do servidor (`APR_API_BASE_URL`) no build ou nas configurações do APR, **nada é enviado**: a APR fica salva no aparelho, e a atualização automática do APR é recusada. Os valores de exemplo do código original (`exemplo.com.br`) foram removidos. Segredos (`env.prod.json`) e chaves de assinatura estão no `.gitignore`.
+
+**O que mudou para quem usa.** Ao abrir o app aparece a tela inicial com os dois módulos; o WaveLens é o mesmo de antes. O APK ficou maior (≈ 60 MB, contra ≈ 43 MB) por trazer os componentes do APR.
 
 ## 3. Motor do Simulador e Engenharia de RF
 
@@ -722,6 +745,7 @@ O botão **Carregar plantas do dispositivo** (biblioteca) e o chip **+ Pavimento
 | 8.1 | 25/09/2026 | **Biblioteca:** novo projeto "Casa 2 Pavimentos (Referência)" (2 andares, desenho vetorial próprio, modelo para simulações em casas de dois pisos) e "Planta 04 — Apartamento 3 Suítes"; heurísticas de mobília do desenho vetorial ganham mesa de jantar (`jantar`) e escada (`escada`). **Catálogo:** novo roteador **ZTE E2320 / E2620 (ZXHN, Wi-Fi 6)**, 20 dBm (acima do Huawei AX3), com ícone próprio (corpo branco, duas antenas externas) |
 | 8.2 | 26/09/2026 | **Rebranding:** o produto passa a se chamar **WaveLens** (antes NetFloor) — título, cabeçalhos, banners, metadados do laudo em PDF e `android:label` do APK atualizados; identificadores técnicos internos (repositórios GitHub, `applicationId` Android, ponte `NetFloorNative`, canal `netfloor/diag`, formato `netfloor-project`) mantidos por compatibilidade (seção 1.5). **Ícone novo:** desenho próprio (wifi + roteador + globo, azul), com `flutter_launcher_icons` configurado no Shell e script de redimensionamento para os ícones do site/PWA (seção 2.6). Shell 3.3.0 (novo `android:label`, pasta de downloads passa a ser `Downloads/WaveLens`) |
 | 8.2.1 | 18/10/2026 | **Organização do código:** o `main.dart` (6,7 mil linhas) foi dividido em 30 módulos (`app/`, `core/`, `simulador/`, `diagnostico/`, `infra/`, `laudo/`) com `part`/`part of`, cada um com cabeçalho "ETAPA n" para explicar o app etapa por etapa (seção 2.3 e `GUIA_DO_CODIGO.md`); nenhuma linha de código mudou (verificado). Pequeno ajuste do rebranding: o projeto exportado passa a se chamar `<nome>.wavelens.json` (a importação continua aceitando qualquer `.json`) |
+| 8.2.2 | 18/10/2026 | **App completo 4.0.0+7:** o Shell e o aplicativo de APR (Análise Preliminar de Riscos) foram unidos em um único APK com tela inicial de módulos (seção 2.8), em repositório privado `wavelens-app`. O site/simulador não mudou funcionalmente; o `applicationId` é o mesmo (atualiza por cima do Shell 3.3.0) |
 
 **Remoções relacionadas a marca d'água e conteúdo.**
 
@@ -874,7 +898,10 @@ gh release create v3.3.0 build/app/outputs/flutter-apk/app-release.apk#WaveLens-
 | v3.0.0 | Shell com diagnóstico nativo (ponte JS, Wi-Fi, permissões, seletor de arquivos) |
 | v3.1.0 | Seleção múltipla de imagens no seletor de arquivos |
 | v3.2.0 | Entrega de arquivos (`saveFile`: Downloads e compartilhamento), seletor de `.json` para importar projetos |
-| v3.3.0 | Rebranding: `android:label` = WaveLens, novo ícone do launcher, pasta `Downloads/WaveLens` (**atual**) |
+| v3.3.0 | Rebranding: `android:label` = WaveLens, novo ícone do launcher, pasta `Downloads/WaveLens` (último Shell isolado; legado) |
+| v4.0.0 (build 7) | **App completo WaveLens + APR.** Publicado como release do repositório **privado** `Rogerdev5690/wavelens-app` (não neste repositório público), arquivo `WaveLens-4.0.0+7.apk` (**atual**) |
+
+Para os próximos APKs use o projeto `wavelens_app` (comandos de build e assinatura no `README.md` dele): `flutter build apk --release` e `gh release create vX.Y.Z ... --repo Rogerdev5690/wavelens-app`. Os comandos acima descrevem o Shell legado.
 
 **Regra de versão do Shell:** incrementar o `versionCode` (o número após `+`) a cada APK novo; mudar o número maior quando houver novos recursos nativos. O APK atualiza o anterior por cima (mesmo `applicationId` e mesma chave de assinatura).
 
@@ -929,6 +956,10 @@ gh release create v3.3.0 build/app/outputs/flutter-apk/app-release.apk#WaveLens-
 | Histórico do Git | Arquivos removidos (por exemplo, com marca d'água) continuam nos commits antigos |
 | Pasta `netfloor/android/` | Legado do APK nativo v1.0.0; o projeto atual depende de `dart:js_interop` e só compila para Web |
 | Seleção múltipla no Shell 3.1.0 | Compilada, ainda não validada em aparelho |
+| App completo 4.0.0 | Compilado e analisado (0 erros, 23 testes do APR/configuração passando), **ainda não validado em aparelho** |
+| APR: servidor | `apr_server/` ainda não implantado: sem `APR_API_BASE_URL`, e-mail e atualização automática do APR ficam desligados (a APR é salva no aparelho) |
+| APR: logotipo e dados da empresa | Falta `logo_sulnet.png` e trocar `COMPLETAR ENDEREÇO/TELEFONE` no formulário (`apr_fibra_v1.json`) |
+| Chave de assinatura | A chave de debug fica em `%USERPROFILE%\.android\debug.keystore`: fazer **backup**; perdê-la impede atualizar o app instalado |
 
 ## 9. Manutenção desta Documentação (Regra de Projeto)
 
