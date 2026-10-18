@@ -1,6 +1,6 @@
 <!-- doc-version: 8.2 -->
-<!-- doc-revision: 8.2.0 -->
-<!-- doc-date: 26/09/2026 -->
+<!-- doc-revision: 8.2.1 -->
+<!-- doc-date: 18/10/2026 -->
 
 ## 1. Visão Geral e Proposta do Produto
 
@@ -103,7 +103,9 @@ Estrutura local (`C:\Users\Roger\Desktop\Nova pasta\`):
 
 ```text
 netfloor/                      # app web (Flutter) — pubspec name: wavelens
-  lib/main.dart                # todo o código do app (arquivo único, ~6.730 linhas)
+  lib/main.dart                # importações + lista de módulos (part) + main()
+  lib/app/ core/ simulador/    # 30 módulos "ETAPA n" (seção 2.3 e GUIA_DO_CODIGO.md)
+  lib/diagnostico/ infra/ laudo/
   assets/floorplans/           # imagens das plantas
   assets/icon/                 # icon.png (fonte dos ícones web/PWA, seção 2.6)
   assets/fonts/                # Roboto (Regular, Bold, Italic) usada no PDF
@@ -123,16 +125,23 @@ netfloor_shell/                # Shell Android — pubspec name: wavelens_shell
     kotlin/com/netfloor/netfloor_shell/MainActivity.kt
 ```
 
-### 2.3 Frontend Web/PWA (`lib/main.dart`)
+### 2.3 Frontend Web/PWA (`lib/`)
 
-O arquivo único é dividido em três partes:
+Desde a revisão 8.2.1 o código do app web está dividido em **30 módulos** dentro de `lib/`. O `lib/main.dart` só tem as importações, a lista de módulos e a função `main()`. Os módulos usam `part` / `part of` do Dart: continuam sendo **uma única biblioteca** (mesmas importações, mesmos nomes privados `_`), apenas espalhada em arquivos pequenos. Cada arquivo começa com um cabeçalho **"ETAPA n"** (o que é, como funciona, usado por, onde mexer), pensado para explicar o app etapa por etapa.
 
-| Parte | Conteúdo | Classes principais |
-|---|---|---|
-| Raiz | Aplicativo, tema, estado compartilhado e navegação inferior (Simulador / Diagnóstico) | `WaveLensApp`, `WaveLensShell` |
-| Parte 1 — Simulador | Catálogo, plantas, materiais, bandas, física de sinal, pintura, ferramentas e tela | `RouterModelSpec`, `FloorPlanDef`, `FloorState`, `WallSegment`, `RfBandSpec`, `ProjectDef`, `NetworkModel`, `SignalField`, `HeatmapPainter`, `ToolOverlayPainter`, `FloorPlanPainter`, `RouterDevicePainter`, `RadarPingPainter`, `SimulatorPage` |
-| Parte 2 — Diagnóstico | Ponte nativa, modelos de dados, fontes de dados, controlador e três abas | `NativeBridge`, `WifiNetwork`, `LinkInfo`, `DiagnosticsSource`, `NativeBridgeDiagnostics`, `SimulatedDiagnostics`, `DiagnosticsController`, `DiagnosticPage`, `SpectrumTab`, `SpectrumPainter`, `SignalTab`, `LatencyTab` |
-| Parte 3 — Enterprise | Temas, armazenamento local, entrega de arquivos, assinatura, tela e gerador do laudo | `ViewMode`, `buildTheme`, `AppStore`, `FileIO`, `SignaturePadPage`, `ReportPage`, `LaudoPdf`, `renderFloorRaster` |
+| Pasta | Etapas | Conteúdo | Classes principais |
+|---|---|---|---|
+| `app/` | 1–3 | Entrada do app, navegação inferior, nome/versão, temas | `WaveLensApp`, `WaveLensShell`, `kAppName`, `ViewMode`, `buildTheme` |
+| `core/` | 4–5 | Utilitários e diálogos reutilizáveis | `_muted`, `_fmtDate`, `BusyDialog`, `confirmDialog`, `safeFileName` |
+| `simulador/modelo`, `dados`, `estado` | 6–10 | Dados (roteadores, plantas, paredes, bandas, medições, laudo), biblioteca de plantas e o estado do projeto | `RouterModelSpec`, `FloorPlanDef`, `FloorState`, `WallSegment`, `RfBandSpec`, `ProjectDef`, `Measurement`, `ReportInfo`, `NetworkModel` |
+| `simulador/fisica` | 11 | A física do sinal | `SignalField`, `computeCoverage` |
+| `simulador/pintura` | 12–16 | Paleta de calor e todos os `CustomPainter` | `HeatmapPainter`, `FloorPlanPainter`, `ToolOverlayPainter`, `RadarPingPainter`, `PointMarkerPainter`, `RouterDevicePainter` |
+| `simulador/tela` | 17 | A tela principal do simulador | `SimulatorPage` |
+| `diagnostico/` | 18–25 | Ponte nativa, modelos, fontes de dados, controlador e as 3 abas | `NativeBridge`, `WifiNetwork`, `LinkInfo`, `DiagnosticsSource`, `DiagnosticsController`, `DiagnosticPage`, `SpectrumTab`, `SignalTab`, `LatencyTab` |
+| `infra/` | 26–27 | Armazenamento local offline e entrega de arquivos | `AppStore`, `FileIO` |
+| `laudo/` | 28–30 | Assinatura, tela do laudo e gerador do PDF | `SignaturePadPage`, `ReportPage`, `LaudoPdf`, `renderFloorRaster` |
+
+A tabela arquivo a arquivo, com o roteiro de explicação, está em `docs/GUIA_DO_CODIGO.md`. A divisão foi verificada mecanicamente: as 6.205 linhas de código não vazias dos módulos são idênticas às do antigo `main.dart` (diferença zero), o `flutter analyze` não mudou e o app foi testado depois da divisão.
 
 **Gerenciamento de estado.** Usa-se `ChangeNotifier` com `AnimatedBuilder`, sem bibliotecas externas. `NetworkModel` guarda projeto, pavimentos (com escala e paredes), roteadores, pontos de medição, registros de diagnóstico e dados do laudo; `DiagnosticsController` guarda varredura, amostras de sinal e de ping. O `WaveLensShell` é dono dos dois e do `AppStore` (armazenamento), repassando-os às telas. Durante o arraste de um roteador só a camada do mapa de calor é redesenhada, mantendo a interação fluida.
 
@@ -672,7 +681,7 @@ Isso permite deixar a **vaga** de uma planta reservada: enquanto o PNG não exis
 
 1. Confirme que a imagem é **limpa** (sem marca d'água de terceiros e com direito de uso).
 2. Copie o arquivo para `netfloor/assets/floorplans/` (o `pubspec.yaml` já inclui a pasta inteira).
-3. No `main.dart`, crie um `FloorPlanDef` com `assetPath`, `imageUrl` (URL `raw.githubusercontent.com` após publicar no `main`) e `aspectRatio = largura / altura` da imagem.
+3. Em `lib/simulador/dados/biblioteca_plantas.dart`, crie um `FloorPlanDef` com `assetPath`, `imageUrl` (URL `raw.githubusercontent.com` após publicar no `main`) e `aspectRatio = largura / altura` da imagem.
 4. Estime as paredes internas em coordenadas fracionárias (0 a 1) e cadastre os `WallSegment` (3,5 / 6 / 10 dB conforme a parede) e a largura real estimada em `defaultWidthM`. Se a planta for nova na biblioteca, inclua-a também em `kBuiltInPlans` (necessário para reabrir projetos salvos e importados).
 5. Inclua a planta em um `ProjectDef` na lista `kProjectLibrary`.
 6. Publique (seção 7): commit no `main`, build web e deploy no `gh-pages`.
@@ -712,6 +721,7 @@ O botão **Carregar plantas do dispositivo** (biblioteca) e o chip **+ Pavimento
 | 8.0 | 21/09/2026 | **WaveLens Enterprise:** laudo de vistoria em PDF com logo, mapas por banda, tabelas previsto × medido e **assinatura digital**; `InteractiveViewer` (zoom/pan); **calibração de escala por régua** (o cálculo passa a ser em metros reais); **materiais de parede** e ferramenta de desenho; **2.4 / 5 / 6 GHz**; pontos e **medição de campo** (RSSI, PHY, ping duplo, perda); modos **Apresentação** e **Diagnóstico**; **persistência offline** (IndexedDB) e exportar/importar `.json`; Shell 3.2.0 (`saveFile`, compartilhamento, seletor `.json`); a constante `kPixelsPerMeter` deixa de existir |
 | 8.1 | 25/09/2026 | **Biblioteca:** novo projeto "Casa 2 Pavimentos (Referência)" (2 andares, desenho vetorial próprio, modelo para simulações em casas de dois pisos) e "Planta 04 — Apartamento 3 Suítes"; heurísticas de mobília do desenho vetorial ganham mesa de jantar (`jantar`) e escada (`escada`). **Catálogo:** novo roteador **ZTE E2320 / E2620 (ZXHN, Wi-Fi 6)**, 20 dBm (acima do Huawei AX3), com ícone próprio (corpo branco, duas antenas externas) |
 | 8.2 | 26/09/2026 | **Rebranding:** o produto passa a se chamar **WaveLens** (antes NetFloor) — título, cabeçalhos, banners, metadados do laudo em PDF e `android:label` do APK atualizados; identificadores técnicos internos (repositórios GitHub, `applicationId` Android, ponte `NetFloorNative`, canal `netfloor/diag`, formato `netfloor-project`) mantidos por compatibilidade (seção 1.5). **Ícone novo:** desenho próprio (wifi + roteador + globo, azul), com `flutter_launcher_icons` configurado no Shell e script de redimensionamento para os ícones do site/PWA (seção 2.6). Shell 3.3.0 (novo `android:label`, pasta de downloads passa a ser `Downloads/WaveLens`) |
+| 8.2.1 | 18/10/2026 | **Organização do código:** o `main.dart` (6,7 mil linhas) foi dividido em 30 módulos (`app/`, `core/`, `simulador/`, `diagnostico/`, `infra/`, `laudo/`) com `part`/`part of`, cada um com cabeçalho "ETAPA n" para explicar o app etapa por etapa (seção 2.3 e `GUIA_DO_CODIGO.md`); nenhuma linha de código mudou (verificado). Pequeno ajuste do rebranding: o projeto exportado passa a se chamar `<nome>.wavelens.json` (a importação continua aceitando qualquer `.json`) |
 
 **Remoções relacionadas a marca d'água e conteúdo.**
 

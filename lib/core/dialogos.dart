@@ -65,5 +65,5 @@ String safeFileName(String input) {
   }
   final cleaned = sb.toString().replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_').replaceAll(RegExp(r'_+'), '_');
   final trimmed = cleaned.replaceAll(RegExp(r'^_+|_+$'), '');
-  return trimmed.isEmpty ? 'netfloor' : trimmed;
+  return trimmed.isEmpty ? 'wavelens' : trimmed;
 }

@@ -803,7 +803,7 @@ class _SimulatorPageState extends State<SimulatorPage> with SingleTickerProvider
   Future<void> _exportProject() async {
     try {
       final json = const JsonEncoder.withIndent(' ').convert(_model.toJson(embedImages: true));
-      final name = '${safeFileName(_model.workspaceName)}.netfloor.json';
+      final name = '${safeFileName(_model.workspaceName)}.wavelens.json';
       final where = await FileIO.deliver(name, 'application/json', Uint8List.fromList(utf8.encode(json)));
       if (mounted) _snack(where);
     } catch (e) {
